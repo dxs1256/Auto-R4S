@@ -12,8 +12,6 @@ on:
           - 25.12.0
           - 24.10.6
           - 24.10.5
-          - 24.10.4
-          - 24.10.3
       profile:
         type: choice
         description: "固定机型：friendlyarm_nanopi-r4s"

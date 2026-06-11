@@ -47,6 +47,41 @@ else
 fi
 
 # ==========================================
+# 3. 创建缺失的 opkg-key 脚本（修复 25.12.0+ 版本构建错误）
+# ==========================================
+if [ ! -f "/home/build/immortalwrt/scripts/opkg-key" ]; then
+    echo "🔧 创建缺失的 opkg-key 脚本..."
+    mkdir -p /home/build/immortalwrt/scripts
+    cat << 'EOF' > /home/build/immortalwrt/scripts/opkg-key
+#!/bin/sh
+# Minimal opkg-key stub for ImageBuilder compatibility
+set -e
+KEYDIR="/home/build/immortalwrt/keys"
+mkdir -p "$KEYDIR"
+case "$1" in
+    list)
+        if [ -d "$KEYDIR" ]; then
+            for key in "$KEYDIR"/*.key; do
+                [ -f "$key" ] && basename "$key" .key
+            done
+        fi
+        ;;
+    add)
+        if [ -n "$2" ]; then
+            cat "$2" > "$KEYDIR/$(basename "$2" .key).key"
+        fi
+        ;;
+    *)
+        echo "Usage: opkg-key {list|add <keyfile>}" >&2
+        exit 1
+        ;;
+esac
+EOF
+    chmod +x /home/build/immortalwrt/scripts/opkg-key
+    echo "✅ opkg-key 脚本已创建"
+fi
+
+# ==========================================
 # 4. 定义安装包列表（已删除 custom-packages.sh 中已包含的插件）
 # ==========================================
 PACKAGES=""

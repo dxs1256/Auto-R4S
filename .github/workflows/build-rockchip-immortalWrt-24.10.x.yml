@@ -9,6 +9,7 @@ on:
         default: "latest"
         type: choice
         options:
+          - 25.12.0
           - 24.10.6
           - 24.10.5
           - 24.10.4

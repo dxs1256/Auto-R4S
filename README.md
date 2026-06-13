@@ -31,7 +31,7 @@
 | `rootfs_partsize` | Rootfs 分区大小 (MB) | `3072` |
 | `include_docker` | 是否集成 Docker | `yes` |
 | `enable_pppoe` | 是否配置 PPPoE 拨号 | `yes` |
-| `pppoe_account` | 宽带账号（启用 PPPoE 时必填） | `071900263467` |
+| `pppoe_account` | 宽带账号（启用 PPPoE 时必填） | `01000011111` |
 | `pppoe_password` | 宽带密码（启用 PPPoE 时必填） | `123456` |
 
 ---

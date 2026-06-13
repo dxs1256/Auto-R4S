@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       luci_version:
-        description: "选择 LuCI 版本 (选 latest 自动获取最新 24.10.x)"
+        description: "选择 LuCI 版本 (有新版本时请手动在此添加)"
         required: true
-        default: "latest"
+        default: "24.10.6"
         type: choice
         options:
           - 24.10.6
@@ -19,11 +19,11 @@ on:
         required: true
         default: 'friendlyarm_nanopi-r4s'
       custom_router_ip:
-        description: "管理地址: 192.168.1.1"
+        description: "管理地址：192.168.1.1"
         required: true
         default: "192.168.1.1"
       rootfs_partsize:
-        description: '设置软件包大小 单位(MB)'
+        description: '设置软件包大小 单位 (MB)'
         required: true
         default: '3072'
       include_docker:
@@ -35,7 +35,7 @@ on:
           - 'yes'
           - 'no'
       enable_pppoe:
-        description: "是否配置PPPoE拨号信息?"
+        description: "是否配置 PPPoE 拨号信息？"
         required: true
         default: 'yes'
         type: choice
@@ -43,11 +43,11 @@ on:
           - 'yes'
           - 'no'
       pppoe_account:
-        description: "宽带账号 (若启用PPPoE)"
+        description: "宽带账号 (若启用 PPPoE)"
         required: true
         default: "071900263467"
       pppoe_password:
-        description: "宽带密码 (若启用PPPoE)"
+        description: "宽带密码 (若启用 PPPoE)"
         required: true
         default: "123456"
 
@@ -61,44 +61,22 @@ jobs:
 
       - name: Set executable permissions
         run: chmod +x ${{ github.workspace }}/rockchip/build24.sh
-      
-      # ================= 新增核心逻辑：解析 latest 版本号 =================
-      - name: Resolve LUCI Version
-        id: resolve_version
+
+      # ================= 版本号说明 =================
+      # 直接使用用户选择的版本号，无需从 Docker Hub 查询
+      # 有新版本时，请在上方 inputs.luci_version.options 中手动添加
+      # ==============================================
+
+      - name: Set LUCI Version
         run: |
-          INPUT_VERSION="${{ inputs.luci_version }}"
-          
-          if [[ "$INPUT_VERSION" == "latest" ]]; then
-            echo "🔄 用户选择了 latest，正在从 Docker Hub 获取最新 24.10.x 版本号..."
-            
-            # 使用更稳定的 API 查询方式，匹配包含平台信息的完整 tag
-            LATEST_VER=$(curl -sL "https://hub.docker.com/v2/repositories/immortalwrt/imagebuilder/tags/?page_size=100" | \
-            jq -r '.results[].name' | \
-            grep -E '.*-openwrt-24\.10\.[0-9]+$' | \
-            sed -E 's/.*-openwrt-(24\.10\.[0-9]+)$/\1/' | \
-            sort -V | \
-            tail -n1)
-            
-            if [[ -z "$LATEST_VER" ]]; then
-              echo "⚠️ 获取最新版本失败，触发防呆机制，回退到默认的 24.10.5"
-              LATEST_VER="24.10.5"
-            else
-              echo "✅ 成功获取官方最新版本: $LATEST_VER"
-            fi
-            
-            # 将真实版本号存入环境变量
-            echo "RESOLVED_VERSION=$LATEST_VER" >> $GITHUB_ENV
-          else
-            echo "📌 用户手动指定了版本: $INPUT_VERSION"
-            echo "RESOLVED_VERSION=$INPUT_VERSION" >> $GITHUB_ENV
-          fi
-      # ================================================================
+          echo "📌 使用版本：${{ inputs.luci_version }}"
+          echo "RESOLVED_VERSION=${{ inputs.luci_version }}" >> $GITHUB_ENV
 
       - name: Save Custom Router IP into OpenWrt files
         run: |
           mkdir -p "${{ github.workspace }}/custom"
           echo "${{ inputs.custom_router_ip }}" > "${{ github.workspace }}/custom/custom_router_ip.txt"
-          echo "您设置的Rockchip软路由管理地址是:${{ inputs.custom_router_ip }}"
+          echo "您设置的 Rockchip 软路由管理地址是:${{ inputs.custom_router_ip }}"
       
       - name: Normalize PPPoE Inputs
         run: |
@@ -112,7 +90,7 @@ jobs:
             pppoe_password=""
           elif [[ "$effective_enable_pppoe" == "yes" ]]; then
             if [[ -z "$pppoe_account" || -z "$pppoe_password" ]]; then
-              echo "⚠️ 警告: 启用了 PPPoE，但账号或密码为空！自动回退为不启用(no)。"
+              echo "⚠️ 警告：启用了 PPPoE，但账号或密码为空！自动回退为不启用 (no)。"
               effective_enable_pppoe="no"
               pppoe_account=""
               pppoe_password=""
@@ -141,7 +119,6 @@ jobs:
           include_passwall="${{ inputs.include_passwall }}"
           rootfs_partsize="${{ inputs.rootfs_partsize }}"
           
-          # ⚠️ 注意这里：使用了我们上面刚刚解析出来的真实版本号 env.RESOLVED_VERSION
           echo "Building for profile: $profile with version: ${{ env.RESOLVED_VERSION }}"
           
           docker run --rm -i \
@@ -184,7 +161,6 @@ jobs:
             kernel_version="unknown"
           fi
 
-          # 只提取内核版本号的前缀部分（如 6.6.122）
           kernel_version_short=$(echo "$kernel_version" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')
           if [ -z "$kernel_version_short" ]; then
             kernel_version_short="$kernel_version"

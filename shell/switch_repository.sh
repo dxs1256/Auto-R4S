@@ -1,7 +1,8 @@
+#!/bin/bash
 # 将 Imagebuilder 默认 repositories 切换到镜像源 避免下载失败
 OFFICIAL="https://downloads.immortalwrt.org"
 MIRROR="https://mirrors.cernet.edu.cn/immortalwrt"
-echo ">>> official failed, switching to mirror"
+echo ">>> switching to mirror source"
 BASE_URL="$MIRROR"
 echo "Using BASE_URL = $BASE_URL"
 echo "========================================"
@@ -22,5 +23,5 @@ if [ -n "$REPO_CONF" ] && [ -f "$REPO_CONF" ]; then
     sed -i "s#${OFFICIAL}#${BASE_URL}#g" "$REPO_CONF"
     cat "$REPO_CONF"
 else
-    echo "⚠️ 未找到 repositories.conf 文件，跳过镜像源切换"
+    echo "未找到 repositories.conf 文件，跳过镜像源切换"
 fi

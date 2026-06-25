@@ -5,8 +5,6 @@
 source shell/custom-packages.sh
 source shell/switch_repository.sh
 
-# 合并第三方插件
-CUSTOM_PACKAGES="$BASE_CUSTOM_PACKAGES $CUSTOM_PACKAGES"
 echo "第三方软件包: $CUSTOM_PACKAGES"
 LOGFILE="/tmp/uci-defaults-log.txt"
 echo "Starting build.sh at $(date)" >> $LOGFILE
@@ -26,15 +24,10 @@ EOF
 # 2. 处理第三方 Run 包软件仓库 (配合 Github Cache)
 # ==========================================
 if [ -z "$CUSTOM_PACKAGES" ]; then
-  echo "⚪️ 未选择任何第三方软件包"
+  echo "未选择任何第三方软件包"
 else
-  if [ -d "/tmp/store-run-repo/.git" ]; then
-      echo "⚡️ 使用缓存的软件仓库"
-      cd /tmp/store-run-repo && git pull && cd -
-  else
-      echo "🔄 同步第三方软件仓库..."
-      git clone --depth=1 https://github.com/wukongdaily/store.git /tmp/store-run-repo
-  fi
+  echo "同步第三方软件仓库..."
+  git clone --depth=1 https://github.com/wukongdaily/store.git /tmp/store-run-repo
 
   mkdir -p /home/build/immortalwrt/extra-packages
   cp -r /tmp/store-run-repo/run/arm64/* /home/build/immortalwrt/extra-packages/
@@ -42,7 +35,7 @@ else
   # 执行解压和整理
   sh shell/prepare-packages.sh
   
-  # ⚠️ 注意：此处删除了之前导致错误的 sed 注入 arch 架构的代码
+  # 注意：此处删除了之前导致错误的 sed 注入 arch 架构的代码
   # ImageBuilder 24.10 已经内置了正确的架构，无需手动干预
 fi
 
@@ -53,7 +46,7 @@ OPKG_BIN="/home/build/immortalwrt/staging_dir/host/bin/opkg"
 OPKG_KEY_BIN="/home/build/immortalwrt/scripts/opkg-key"
 
 if [ ! -f "$OPKG_BIN" ]; then
-    echo "🔧 创建缺失的 opkg 脚本..."
+    echo "创建缺失的 opkg 脚本..."
     mkdir -p /home/build/immortalwrt/staging_dir/host/bin
     cat << 'EOF' > "$OPKG_BIN"
 #!/bin/sh
@@ -62,26 +55,26 @@ if [ ! -f "$OPKG_BIN" ]; then
 set -e
 case "$1" in
     install)
-        echo "⚠️ opkg install called with: $*"
+        echo "opkg install called with: $*"
         echo "Skipping package installation (ImageBuilder will handle it)"
         exit 0
         ;;
     update)
-        echo "⚠️ opkg update called - skipping"
+        echo "opkg update called - skipping"
         exit 0
         ;;
     *)
-        echo "⚠️ opkg called with: $*"
+        echo "opkg called with: $*"
         exit 0
         ;;
 esac
 EOF
     chmod +x "$OPKG_BIN"
-    echo "✅ opkg 脚本已创建"
+    echo "opkg 脚本已创建"
 fi
 
 if [ ! -f "$OPKG_KEY_BIN" ]; then
-    echo "🔧 创建缺失的 opkg-key 脚本..."
+    echo "创建缺失的 opkg-key 脚本..."
     mkdir -p /home/build/immortalwrt/scripts
     cat << 'EOF' > "$OPKG_KEY_BIN"
 #!/bin/sh
@@ -109,7 +102,7 @@ case "$1" in
 esac
 EOF
     chmod +x "$OPKG_KEY_BIN"
-    echo "✅ opkg-key 脚本已创建"
+    echo "opkg-key 脚本已创建"
 fi
 
 # ==========================================
@@ -146,7 +139,7 @@ fi
 # ==========================================
 # 5. 调试信息
 # ==========================================
-echo "🔍 构建配置信息:"
+echo "构建配置信息:"
 echo "Profile: $PROFILE"
 echo "Packages: $PACKAGES"
 echo "Files: /home/build/immortalwrt/files"
@@ -155,14 +148,17 @@ echo "Rootfs size: $ROOTFS_PARTSIZE"
 # ==========================================
 # 6. 执行构建 (开启多线程优化)
 # ==========================================
-echo "🚀 开始构建固件，并发线程数: $(nproc)"
+echo "开始构建固件，并发线程数: $(nproc)"
 
 # 使用 -j$(nproc) 跑满 CPU
-make image PROFILE=$PROFILE PACKAGES="$PACKAGES" FILES="/home/build/immortalwrt/files" ROOTFS_PARTSIZE=$ROOTFS_PARTSIZE -j$(nproc)
+make image PROFILE=$PROFILE PACKAGES="$PACKAGES" FILES="/home/build/immortalwrt/files" ROOTFS_PARTSIZE=$ROOTFS_PARTSIZE -j$(nproc) 2>/tmp/build-error.log
 
 if [ $? -ne 0 ]; then
-    echo "❌ Build failed!"
+    echo "Build failed!"
+    echo "=== Build stderr (last 50 lines) ==="
+    tail -n 50 /tmp/build-error.log 2>/dev/null
+    echo "=== Full error log: /tmp/build-error.log ==="
     exit 1
 fi
 
-echo "🎉 Build completed successfully."
+echo "Build completed successfully."

@@ -34,6 +34,14 @@ on:
         options:
           - 'yes'
           - 'no'
+      include_passwall:
+        description: "是否编译 PassWall 插件"
+        required: true
+        default: 'yes'
+        type: choice
+        options:
+          - 'yes'
+          - 'no'
       enable_pppoe:
         description: "是否配置 PPPoE 拨号信息？"
         required: true
@@ -45,11 +53,11 @@ on:
       pppoe_account:
         description: "宽带账号 (若启用 PPPoE)"
         required: true
-        default: "071900263467"
+        default: ""
       pppoe_password:
         description: "宽带密码 (若启用 PPPoE)"
         required: true
-        default: "123456"
+        default: ""
 
 jobs:
   build:
@@ -69,7 +77,7 @@ jobs:
 
       - name: Set LUCI Version
         run: |
-          echo "📌 使用版本：${{ inputs.luci_version }}"
+          echo "使用版本：${{ inputs.luci_version }}"
           echo "RESOLVED_VERSION=${{ inputs.luci_version }}" >> $GITHUB_ENV
 
       - name: Save Custom Router IP into OpenWrt files
@@ -85,17 +93,17 @@ jobs:
           pppoe_password="${{ inputs.pppoe_password }}"
 
           if [[ "$effective_enable_pppoe" == "no" ]]; then
-            echo "ℹ️ 用户选择了不启用 PPPoE(no)，已自动清空丢弃账号和密码"
+            echo "用户选择了不启用 PPPoE(no)，已自动清空丢弃账号和密码"
             pppoe_account=""
             pppoe_password=""
           elif [[ "$effective_enable_pppoe" == "yes" ]]; then
             if [[ -z "$pppoe_account" || -z "$pppoe_password" ]]; then
-              echo "⚠️ 警告：启用了 PPPoE，但账号或密码为空！自动回退为不启用 (no)。"
+              echo "警告：启用了 PPPoE，但账号或密码为空！自动回退为不启用 (no)。"
               effective_enable_pppoe="no"
               pppoe_account=""
               pppoe_password=""
             else
-              echo "✅ 将使用填写的 PPPoE 账号进行配置"
+              echo "将使用填写的 PPPoE 账号进行配置"
             fi
           fi
 
@@ -106,10 +114,10 @@ jobs:
       - name: Check Options
         run: |
           if [[ "${{ inputs.include_docker }}" == "yes" ]]; then
-             echo "✅ include_docker=yes，将在 build24.sh 中注入 Docker 组件"
+             echo "include_docker=yes，将在 build24.sh 中注入 Docker 组件"
           fi
           if [[ "${{ inputs.include_passwall }}" == "yes" ]]; then
-             echo "✅ include_passwall=yes，将在 build24.sh 中注入 Passwall 组件"
+             echo "include_passwall=yes，将在 build24.sh 中注入 Passwall 组件"
           fi
       
       - name: Building Rockchip ImmortalWrt
@@ -149,7 +157,7 @@ jobs:
           fi
 
           if [ -z "$MANIFEST_FILE" ]; then
-            echo "❌ 未找到 manifest 文件，无法生成插件清单" >&2
+            echo "未找到 manifest 文件，无法生成插件清单" >&2
             exit 1
           fi
 
@@ -172,20 +180,20 @@ jobs:
       - name: Create info
         run: |
           cat > ${{ github.workspace }}/router-info.md <<EOF
-          ## 📡 路由器后台信息
+          ## 路由器后台信息
 
-          - ✳️ **路由型号**: ${{ inputs.profile }}
-          - 🏠 **后台地址**: ${{ inputs.custom_router_ip }}
-          - 👤 **用户名**: root
-          - 🔑 **密码**: 无
-          - 🧩 **固件版本**: ${{ env.RESOLVED_VERSION }}
-          - 🧠 **内核版本**: ${KERNEL_VERSION}
+          - **路由型号**: ${{ inputs.profile }}
+          - **后台地址**: ${{ inputs.custom_router_ip }}
+          - **用户名**: root
+          - **密码**: 无
+          - **固件版本**: ${{ env.RESOLVED_VERSION }}
+          - **内核版本**: ${KERNEL_VERSION}
           EOF
 
           if [ "${{ inputs.include_docker }}" == "yes" ]; then
-            echo -e "\n- 🐳 **Docker**: 已集成" >> ${{ github.workspace }}/router-info.md
+            echo -e "\n- **Docker**: 已集成" >> ${{ github.workspace }}/router-info.md
           else
-            echo -e "\n- 🐳 **Docker**: 未集成" >> ${{ github.workspace }}/router-info.md
+            echo -e "\n- **Docker**: 未集成" >> ${{ github.workspace }}/router-info.md
           fi
 
       - name: Upload ImmortWrt as release assets

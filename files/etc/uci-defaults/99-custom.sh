@@ -102,6 +102,15 @@ if command -v dockerd >/dev/null 2>&1; then
     done
     uci commit firewall
 
+    DOCKER_SUBNET="172.16.0.0/12"
+    if command -v docker >/dev/null 2>&1; then
+        DETECTED_SUBNET=$(docker network inspect bridge --format '{{(index .IPAM.Config 0).Subnet}}' 2>/dev/null || true)
+        if [ -n "$DETECTED_SUBNET" ]; then
+            DOCKER_SUBNET="$DETECTED_SUBNET"
+            echo "检测到 Docker 子网: $DOCKER_SUBNET" >> $LOGFILE
+        fi
+    fi
+
     cat <<EOF >>"$FW_FILE"
 
 config zone 'docker'
@@ -109,7 +118,7 @@ config zone 'docker'
   option output 'ACCEPT'
   option forward 'ACCEPT'
   option name 'docker'
-  list subnet '172.16.0.0/12'
+  list subnet '$DOCKER_SUBNET'
 
 config forwarding
   option src 'docker'

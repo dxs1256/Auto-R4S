@@ -11,7 +11,7 @@
 ## 🌟 核心亮点
 
 - **全自动编译**：基于 GitHub Actions，无需本地环境，一键触发云端编译
-- **智能版本选择**：支持 `latest` 自动获取最新版 24.10.x，或手动指定具体版本
+- **智能版本选择**：UI 下拉选择具体版本号，有新版本时手动添加选项即可
 - **PPPoE 预配置**：可直接在编译时填入宽带账号密码，固件刷入即用
 - **自定义管理 IP**：支持设置默认后台地址（默认 192.168.1.1）
 - **Docker 可选**：按需集成 Docker，扩大子网范围防止容器断网
@@ -25,14 +25,15 @@
 
 | 参数名 | 说明 | 默认值 |
 | :--- | :--- | :--- |
-| `luci_version` | LuCI 版本，选 `latest` 自动获取最新 24.10.x | `latest` |
+| `luci_version` | LuCI 版本，下拉选择 | `24.10.6` |
 | `profile` | 固定机型：`friendlyarm_nanopi-r4s` | `friendlyarm_nanopi-r4s` |
 | `custom_router_ip` | 管理后台地址 | `192.168.1.1` |
 | `rootfs_partsize` | Rootfs 分区大小 (MB) | `3072` |
 | `include_docker` | 是否集成 Docker | `yes` |
+| `include_passwall` | 是否集成 PassWall 插件 | `yes` |
 | `enable_pppoe` | 是否配置 PPPoE 拨号 | `yes` |
-| `pppoe_account` | 宽带账号（启用 PPPoE 时必填） | `01000011111` |
-| `pppoe_password` | 宽带密码（启用 PPPoE 时必填） | `123456` |
+| `pppoe_account` | 宽带账号（启用 PPPoE 时必填） | (空) |
+| `pppoe_password` | 宽带密码（启用 PPPoE 时必填） | (空) |
 
 ---
 
@@ -45,7 +46,7 @@
 ### 2. 触发编译
 
 1. 进入 **Actions** 标签页
-2. 选择 `build-rockchip-nanopi-r4s` 工作流
+2. 选择 `build-rockchip-immortalWrt-24.10.x` 工作流
 3. 点击 **Run workflow**
 4. 填写你想要的参数（版本号、IP、PPPoE 等）
 5. 点击 **Run workflow** 开始编译
@@ -66,8 +67,8 @@
 Auto-R4S
 ├── .github/
 │   └── workflows/
-│       ├── build-rockchip-nanopi-r4s.yml   # 主编译工作流
-│       └── Cleanup-Old-History.yml          # 历史清理工作流
+│       ├── build-rockchip-immortalWrt-24.10.x.yml   # 主编译工作流
+│       └── clean-workflow.yml                        # 历史清理工作流
 ├── rockchip/
 │   ├── build24.sh          # 主构建脚本（在 Docker 内执行）
 │   └── imm.config          # ImmortalWrt 配置文件
@@ -126,13 +127,13 @@ CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-app-netspeedtest"  # 网络测速
 CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-app-advancedplus"  # 进阶设置
 ```
 
-**注意**：硬路由闪存空间有限，添加过多插件可能导致固件过大或编译失败。
+**注意**：R4S 拥有充足的存储空间，但仍建议按需选择插件。
 
 ---
 
 ## 🗑️ 清理历史编译
 
-触发 `Cleanup-Old-History.yml` 工作流，可删除旧的 Workflow 运行记录：
+触发 `clean-workflow.yml` 工作流，可删除旧的 Workflow 运行记录：
 
 - 参数 `keep_days`：保留最近多少天（默认 1 天）
 - 用途：节省 GitHub Actions 存储空间
@@ -143,7 +144,7 @@ CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-app-advancedplus"  # 进阶设置
 
 1. **PPPoE 账号密码** 会直接写入固件，请勿使用生产环境的真实账号测试
 2. **固件大小** 超过 3072MB 可能导致编译失败，可适当调整 `rootfs_partsize`
-3. **Docker 防火墙** 会在首次开机时自动注入 `172.16.0.0/12` 子网规则
+3. **Docker 防火墙** 会在首次开机时自动检测 Docker 子网并注入对应的防火墙规则
 4. **网口识别** 依赖 `/sys/class/net/` 的物理网卡枚举，确保设备有 eth/en 前缀的网卡
 
 ---
@@ -193,9 +194,9 @@ if [ "$enable_pppoe" = "yes" ]; then
     uci set network.wan.password="$pppoe_password"
 fi
 
-# 4. Docker 防火墙规则
+# 4. Docker 防火墙规则（自动检测子网）
 config zone 'docker'
-  list subnet '172.16.0.0/12'
+  list subnet '<auto-detected>'
 
 # 5. 修改系统信息
 DISTRIB_DESCRIPTION='Packaged by Github Actions'
@@ -205,31 +206,28 @@ DISTRIB_DESCRIPTION='Packaged by Github Actions'
 
 ## 💡 技术细节
 
-### 版本号解析逻辑
+### 版本号选择逻辑
 
-当用户选择 `latest` 时，自动从 Docker Hub 查询最新版本：
+用户在 UI 下拉菜单中直接选择版本号（如 24.10.5、24.10.6），无需从 Docker Hub 动态查询。有新版本时，在 workflow 的 `inputs.luci_version.options` 中添加即可：
 
-```bash
-LATEST_VER=$(curl -sL "https://hub.docker.com/v2/repositories/immortalwrt/imagebuilder/tags/?page_size=100" | \
-jq -r '.results[].name' | \
-grep -E '.*-openwrt-24\.10\.[0-9]+$' | \
-sed -E 's/.*-openwrt-(24\.10\.[0-9]+)$/\1/' | \
-sort -V | \
-tail -n1)
-
-# 防呆机制 - 获取失败时回退到 24.10.5
-if [[ -z "$LATEST_VER" ]]; then
-  LATEST_VER="24.10.5"
-fi
+```yaml
+inputs:
+  luci_version:
+    type: choice
+    options:
+      - 24.10.6
+      - 24.10.5
 ```
 
 ### 镜像源切换
 
+脚本自动将官方源切换至 Cernet 教育网镜像以加速下载：
+
 ```bash
-# 官方源 → Cernet 教育网镜像
+# 官方源 --> Cernet 教育网镜像
 OFFICIAL="https://downloads.immortalwrt.org"
 MIRROR="https://mirrors.cernet.edu.cn/immortalwrt"
-sed -i "s#${OFFICIAL}#${BASE_URL}#g" repositories.conf
+sed -i "s#${OFFICIAL}#${MIRROR}#g" repositories.conf
 ```
 
 ---

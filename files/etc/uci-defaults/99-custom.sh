@@ -203,4 +203,34 @@ else
     echo "未检测到 Docker，跳过防火墙配置。"
 fi
 
+
+# ============= Open-Box 自动安装 =============
+OPENBOX_INSTALLED="/opt/open-box/.installed"
+OPENBOX_URL="https://raw.githubusercontent.com/liandu2024/Open-Box/main/scripts/install.sh"
+OPENBOX_TMP="/tmp/open-box-install.sh"
+
+if [ ! -f "$OPENBOX_INSTALLED" ]; then
+    echo "检测到 Open-Box 未安装，开始自动安装..." >> "$LOGFILE"
+    
+    # 下载 Open-Box 安装脚本
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL "$OPENBOX_URL" -o "$OPENBOX_TMP" || echo "下载 Open-Box 安装脚本失败" >> "$LOGFILE"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -qO "$OPENBOX_TMP" "$OPENBOX_URL" || echo "下载 Open-Box 安装脚本失败" >> "$LOGFILE"
+    fi
+    
+    # 执行安装
+    if [ -f "$OPENBOX_TMP" ]; then
+        chmod +x "$OPENBOX_TMP"
+        sh "$OPENBOX_TMP" --mirror >> "$LOGFILE" 2>&1 || echo "Open-Box 安装执行失败" >> "$LOGFILE"
+        
+        # 标记已安装
+        if [ -d "/opt/open-box" ]; then
+            touch "$OPENBOX_INSTALLED"
+            echo "Open-Box 安装完成" >> "$LOGFILE"
+        fi
+    fi
+else
+    echo "Open-Box 已安装，跳过" >> "$LOGFILE"
+fi
 exit 0

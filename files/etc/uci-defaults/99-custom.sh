@@ -204,33 +204,94 @@ else
 fi
 
 
-# ============= Open-Box 自动安装 =============
+# ============= Open-Box 自动安装（多镜像容灾） =============
+# 设计：依次探测每个镜像前缀，选第一个能拿 install.sh 且 sha256 内容正确的；
+# 全挂则 die，不动 /opt/open-box。装包失败（没写 /opt）再试下一个，直到成功或全用完。
+OPENBOX_REPO="liandu2024/Open-Box"
+OPENBOX_INSTALL_SH="main/scripts/install.sh"
 OPENBOX_INSTALLED="/opt/open-box/.installed"
-OPENBOX_URL="https://raw.githubusercontent.com/liandu2024/Open-Box/main/scripts/install.sh"
 OPENBOX_TMP="/tmp/open-box-install.sh"
+LOGFILE="/etc/config/uci-defaults-log.txt"
+# 镜像前缀列表：第一个是 Open-Box 官方内置的（上游 BUILTIN_MIRRORS 第一个可用的），
+# 后面是常见加速站。顺序代表优先级，靠前的优先被选中。
+OPENBOX_MIRRORS="
+gh-proxy.com
+ghfast.top
+gh.llkk.cc
+github.moeyy.xyz
+hub.fastgit.xyz
+ghproxy.homeboyc.cn
+"
+
+ob_installed_check() { [ -d "/opt/open-box" ] && [ -f "$OPENBOX_INSTALLED" ] && echo ok; }
+
+# 探测单个镜像：拿 install.sh 小文件，验证开头是 #!/bin/sh 且大小 > 1000 字节。
+ob_probe_mirror() {
+  m="$1"
+  base="https://$m"
+  out=$(curl -fsSL --connect-timeout 6 --max-time 15 \
+        "$base/raw.githubusercontent.com/$OPENBOX_REPO/$OPENBOX_INSTALL_SH" 2>/dev/null) || return 1
+  sz=${#out}
+  [ "$sz" -lt 1000 ] && return 1
+  case "$out" in
+    "#!/bin/sh"*|"#!/bin/sh"*) : ;;
+    *) return 1 ;;
+  esac
+  echo "$m"
+  return 0
+}
+
+# 下载并执行 install.sh --mirror <m>，返回 0 成功 / 1 失败（可能网络或校验失败）。
+ob_try_install() {
+  m="$1"
+  echo "Open-Box: 尝试通过镜像 $m 下载安装..." >> "$LOGFILE"
+  # 把 install.sh 内容写到本地临时文件（避免 curl | sh 这种 stdin 读法对 umask 的影响）
+  case "$m" in
+    http://*|https://*) base="$m" ;;
+    *) base="https://$m" ;;
+  esac
+  curl -fsSL --connect-timeout 8 --max-time 30 \
+       "$base/raw.githubusercontent.com/$OPENBOX_REPO/$OPENBOX_INSTALL_SH" -o "$OPENBOX_TMP" 2>>"$LOGFILE" \
+    || { echo "Open-Box: 镜像 $m 下载 install.sh 失败" >> "$LOGFILE"; return 1; }
+
+  chmod +x "$OPENBOX_TMP"
+  sh "$OPENBOX_TMP" --mirror "$m" >> "$LOGFILE" 2>&1
+  rc=$?
+  if [ $rc -ne 0 ]; then
+    echo "Open-Box: 镜像 $m 安装失败 (rc=$rc)" >> "$LOGFILE"
+    return 1
+  fi
+  if [ -d "/opt/open-box" ]; then
+    touch "$OPENBOX_INSTALLED"
+    echo "Open-Box: 镜像 $m 安装完成" >> "$LOGFILE"
+    return 0
+  fi
+  echo "Open-Box: 镜像 $m 执行成功但 /opt/open-box 不存在，视为失败" >> "$LOGFILE"
+  return 1
+}
 
 if [ ! -f "$OPENBOX_INSTALLED" ]; then
-    echo "检测到 Open-Box 未安装，开始自动安装..." >> "$LOGFILE"
-    
-    # 下载 Open-Box 安装脚本
-    if command -v curl >/dev/null 2>&1; then
-        curl -fsSL "$OPENBOX_URL" -o "$OPENBOX_TMP" || echo "下载 Open-Box 安装脚本失败" >> "$LOGFILE"
-    elif command -v wget >/dev/null 2>&1; then
-        wget -qO "$OPENBOX_TMP" "$OPENBOX_URL" || echo "下载 Open-Box 安装脚本失败" >> "$LOGFILE"
+  echo "检测到 Open-Box 未安装，开始自动安装（多镜像容灾）..." >> "$LOGFILE"
+
+  ok=0
+  for m in $OPENBOX_MIRRORS; do
+    echo "Open-Box: 探测镜像 $m ..." >> "$LOGFILE"
+    if ob_probe_mirror "$m"; then
+      echo "Open-Box: 镜像 $m 可用，开始安装" >> "$LOGFILE"
+      if ob_try_install "$m"; then
+        ok=1
+        break
+      fi
+    else
+      echo "Open-Box: 镜像 $m 不可用，跳过" >> "$LOGFILE"
     fi
-    
-    # 执行安装
-    if [ -f "$OPENBOX_TMP" ]; then
-        chmod +x "$OPENBOX_TMP"
-        sh "$OPENBOX_TMP" --mirror >> "$LOGFILE" 2>&1 || echo "Open-Box 安装执行失败" >> "$LOGFILE"
-        
-        # 标记已安装
-        if [ -d "/opt/open-box" ]; then
-            touch "$OPENBOX_INSTALLED"
-            echo "Open-Box 安装完成" >> "$LOGFILE"
-        fi
-    fi
+  done
+
+  if [ "$ok" -eq 0 ]; then
+    echo "Open-Box: 所有内置镜像全部不可用或安装失败" >> "$LOGFILE"
+    echo "Open-Box: 请用 update.sh / 手动下载 install.sh 安装，或把可用镜像前缀加入 OPENBOX_MIRRORS" >> "$LOGFILE"
+  fi
 else
-    echo "Open-Box 已安装，跳过" >> "$LOGFILE"
+  echo "Open-Box 已安装，跳过" >> "$LOGFILE"
 fi
 exit 0

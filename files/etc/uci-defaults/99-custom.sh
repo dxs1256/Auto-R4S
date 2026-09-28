@@ -217,9 +217,7 @@ LOGFILE="/etc/config/uci-defaults-log.txt"
 OPENBOX_MIRRORS="
 gh-proxy.com
 ghfast.top
-gh.llkk.cc
-github.moeyy.xyz
-hub.fastgit.xyz
+gh.dpik.top
 ghproxy.homeboyc.cn
 "
 

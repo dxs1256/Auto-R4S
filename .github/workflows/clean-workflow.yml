@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       keep_days:
-        description: "保留最近多少天（默认 1）"
+        description: "保留最近多少天（默认 7；请勿设过小，否则丢失构建日志/产物不便排错）"
         required: false
-        default: "1"
+        default: "7"
 
 jobs:
   cleanup:

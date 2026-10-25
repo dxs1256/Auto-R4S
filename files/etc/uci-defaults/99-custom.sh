@@ -3,11 +3,10 @@
 # Log file for debugging
 LOGFILE="/etc/config/uci-defaults-log.txt"
 echo "Starting 99-custom.sh at $(date)" >>$LOGFILE
-# 设置默认防火墙规则，方便单网口虚拟机首次访问 WebUI 
-# 因为本项目中 单网口模式是dhcp模式 直接就能上网并且访问web界面 避免新手每次都要修改/etc/config/network中的静态ip
-# 当你刷机运行后 都调整好了 你完全可以在web页面自行关闭 wan口防火墙的入站数据
-# 具体操作方法：网络——防火墙 在wan的入站数据 下拉选项里选择 拒绝 保存并应用即可。
-uci set firewall.@zone[1].input='ACCEPT'
+# 默认安全策略：WAN 入站【拒绝】(REJECT)。
+# 说明：早期版本为方便单网口虚拟机首次访问而默认 ACCEPT，存在「root 无密码 + WAN 暴露」被公网登录的风险。
+# 现已默认拒绝。如确需从外网管理，请在「网络 → 防火墙 → WAN 入站」改为允许，并务必先设置 root 密码。
+uci -q set firewall.wan.input='REJECT'
 
 # 设置主机名映射，解决安卓原生 TV 无法联网的问题
 uci add dhcp domain
@@ -117,8 +116,8 @@ elif [ "$count" -gt 1 ]; then
     uci commit network
 fi
 
-# 设置所有网口可连接 SSH
-uci set dropbear.@dropbear[0].Interface=''
+# 仅允许从 LAN 访问 SSH，避免 WAN 无密码登录（如需外网 SSH，请改为 'wan' 并先设 root 密码）
+uci set dropbear.@dropbear[0].Interface='lan'
 uci commit
 
 # 设置编译作者信息
@@ -204,16 +203,28 @@ else
 fi
 
 
-# ============= Open-Box 自动安装（多镜像容灾） =============
-# 设计：依次探测每个镜像前缀，选第一个能拿 install.sh 且 sha256 内容正确的；
-# 全挂则 die，不动 /opt/open-box。装包失败（没写 /opt）再试下一个，直到成功或全用完。
+# ============= Open-Box 自动安装（可开关 + 多镜像容灾 + SHA256 校验） =============
+# 安全设计：
+#  - 由构建时生成的 /etc/config/openbox-settings 控制是否安装（ENABLE_OPENBOX），默认 yes。
+#  - install.sh 下载后做 SHA256 校验：优先用仓库同路径的 install.sh.sha256 校验和；
+#    否则用构建时写入的 OPENBOX_EXPECTED_SHA256；都没有则仅做基础检查并明确告警（仍有供应链风险）。
+#  - 全镜像校验/安装失败则不动 /opt/open-box。
 OPENBOX_REPO="liandu2024/Open-Box"
-OPENBOX_INSTALL_SH="main/scripts/install.sh"
+OPENBOX_REF="${OPENBOX_REF:-main}"
+OPENBOX_INSTALL_SH="$OPENBOX_REF/scripts/install.sh"
 OPENBOX_INSTALLED="/opt/open-box/.installed"
 OPENBOX_TMP="/tmp/open-box-install.sh"
+OPENBOX_SHA_TMP="/tmp/open-box-install.sh.sha256"
 LOGFILE="/etc/config/uci-defaults-log.txt"
-# 镜像前缀列表：第一个是 Open-Box 官方内置的（上游 BUILTIN_MIRRORS 第一个可用的），
-# 后面是常见加速站。顺序代表优先级，靠前的优先被选中。
+
+OPENBOX_SETTINGS="/etc/config/openbox-settings"
+OPENBOX_ENABLE="yes"
+OPENBOX_EXPECTED_SHA256=""
+if [ -f "$OPENBOX_SETTINGS" ]; then
+  . "$OPENBOX_SETTINGS"
+fi
+
+# 镜像前缀列表（优先级从高到低）
 OPENBOX_MIRRORS="
 gh-proxy.com
 ghfast.top
@@ -221,75 +232,79 @@ gh.dpik.top
 ghproxy.homeboyc.cn
 "
 
-ob_installed_check() { [ -d "/opt/open-box" ] && [ -f "$OPENBOX_INSTALLED" ] && echo ok; }
+ob_verify() {
+  f="$1"
+  sz=$(wc -c < "$f" 2>/dev/null || echo 0)
+  [ "$sz" -lt 1000 ] && { echo "Open-Box: install.sh 体积异常($sz)，拒绝执行" >> "$LOGFILE"; return 1; }
+  head -c 100 "$f" | grep -q '^#!.*sh' || { echo "Open-Box: install.sh 头部不是 shell 脚本，拒绝执行" >> "$LOGFILE"; return 1; }
 
-# 探测单个镜像：拿 install.sh 小文件，验证开头是 #!/bin/sh 且大小 > 1000 字节。
-ob_probe_mirror() {
-  m="$1"
-  base="https://$m"
-  out=$(curl -fsSL --connect-timeout 6 --max-time 15 \
-        "$base/raw.githubusercontent.com/$OPENBOX_REPO/$OPENBOX_INSTALL_SH" 2>/dev/null) || return 1
-  sz=${#out}
-  [ "$sz" -lt 1000 ] && return 1
-  case "$out" in
-    "#!/bin/sh"*|"#!/bin/sh"*) : ;;
-    *) return 1 ;;
-  esac
-  echo "$m"
+  if [ -s "$OPENBOX_SHA_TMP" ]; then
+    exp=$(cat "$OPENBOX_SHA_TMP" | tr -d '[:space:]' | head -c 64)
+    act=$(sha256sum "$f" | cut -d' ' -f1)
+    if [ "$exp" = "$act" ]; then
+      echo "Open-Box: SHA256 校验通过($act)" >> "$LOGFILE"; return 0
+    fi
+    echo "Open-Box: SHA256 校验失败(期望 $exp 实际 $act)，跳过该镜像" >> "$LOGFILE"; return 1
+  fi
+  if [ -n "$OPENBOX_EXPECTED_SHA256" ]; then
+    act=$(sha256sum "$f" | cut -d' ' -f1)
+    if [ "$OPENBOX_EXPECTED_SHA256" = "$act" ]; then
+      echo "Open-Box: SHA256 校验通过($act)" >> "$LOGFILE"; return 0
+    fi
+    echo "Open-Box: SHA256 校验失败(期望 $OPENBOX_EXPECTED_SHA256 实际 $act)，跳过该镜像" >> "$LOGFILE"; return 1
+  fi
+  echo "Open-Box: ⚠️ 未配置任何 SHA256 校验源，仅做基础检查后执行（存在供应链风险，建议在 openbox-settings 中填入 OPENBOX_EXPECTED_SHA256）" >> "$LOGFILE"
   return 0
 }
 
-# 下载并执行 install.sh --mirror <m>，返回 0 成功 / 1 失败（可能网络或校验失败）。
 ob_try_install() {
   m="$1"
   echo "Open-Box: 尝试通过镜像 $m 下载安装..." >> "$LOGFILE"
-  # 把 install.sh 内容写到本地临时文件（避免 curl | sh 这种 stdin 读法对 umask 的影响）
   case "$m" in
     http://*|https://*) base="$m" ;;
     *) base="https://$m" ;;
   esac
-  curl -fsSL --connect-timeout 8 --max-time 30 \
-       "$base/raw.githubusercontent.com/$OPENBOX_REPO/$OPENBOX_INSTALL_SH" -o "$OPENBOX_TMP" 2>>"$LOGFILE" \
+  url="$base/raw.githubusercontent.com/$OPENBOX_REPO/$OPENBOX_INSTALL_SH"
+  curl -fsSL --connect-timeout 8 --max-time 30 "$url" -o "$OPENBOX_TMP" 2>>"$LOGFILE" \
     || { echo "Open-Box: 镜像 $m 下载 install.sh 失败" >> "$LOGFILE"; return 1; }
+  # 尽力下载官方校验和（可选）
+  curl -fsSL --connect-timeout 8 --max-time 30 "$url.sha256" -o "$OPENBOX_SHA_TMP" 2>>"$LOGFILE" || rm -f "$OPENBOX_SHA_TMP"
+
+  ob_verify "$OPENBOX_TMP" || { rm -f "$OPENBOX_TMP" "$OPENBOX_SHA_TMP"; return 1; }
 
   chmod +x "$OPENBOX_TMP"
   sh "$OPENBOX_TMP" --mirror "$m" >> "$LOGFILE" 2>&1
   rc=$?
+  rm -f "$OPENBOX_TMP" "$OPENBOX_SHA_TMP"
   if [ $rc -ne 0 ]; then
-    echo "Open-Box: 镜像 $m 安装失败 (rc=$rc)" >> "$LOGFILE"
-    return 1
+    echo "Open-Box: 镜像 $m 安装失败 (rc=$rc)" >> "$LOGFILE"; return 1
   fi
   if [ -d "/opt/open-box" ]; then
     touch "$OPENBOX_INSTALLED"
-    echo "Open-Box: 镜像 $m 安装完成" >> "$LOGFILE"
-    return 0
+    echo "Open-Box: 镜像 $m 安装完成" >> "$LOGFILE"; return 0
   fi
-  echo "Open-Box: 镜像 $m 执行成功但 /opt/open-box 不存在，视为失败" >> "$LOGFILE"
-  return 1
+  echo "Open-Box: 镜像 $m 执行成功但 /opt/open-box 不存在，视为失败" >> "$LOGFILE"; return 1
 }
 
-if [ ! -f "$OPENBOX_INSTALLED" ]; then
-  echo "检测到 Open-Box 未安装，开始自动安装（多镜像容灾）..." >> "$LOGFILE"
-
-  ok=0
-  for m in $OPENBOX_MIRRORS; do
-    echo "Open-Box: 探测镜像 $m ..." >> "$LOGFILE"
-    if ob_probe_mirror "$m"; then
-      echo "Open-Box: 镜像 $m 可用，开始安装" >> "$LOGFILE"
-      if ob_try_install "$m"; then
-        ok=1
-        break
-      fi
+case "$OPENBOX_ENABLE" in
+  yes|true|1)
+    if [ -f "$OPENBOX_INSTALLED" ]; then
+      echo "Open-Box 已安装，跳过" >> "$LOGFILE"
     else
-      echo "Open-Box: 镜像 $m 不可用，跳过" >> "$LOGFILE"
+      echo "检测到 Open-Box 未安装，开始自动安装（多镜像容灾 + 校验）..." >> "$LOGFILE"
+      ok=0
+      for m in $OPENBOX_MIRRORS; do
+        echo "Open-Box: 探测镜像 $m ..." >> "$LOGFILE"
+        if ob_try_install "$m"; then ok=1; break; fi
+      done
+      if [ "$ok" -eq 0 ]; then
+        echo "Open-Box: 所有内置镜像均不可用或校验/安装失败" >> "$LOGFILE"
+        echo "Open-Box: 可手动下载 install.sh 安装，或把可用镜像前缀加入 OPENBOX_MIRRORS" >> "$LOGFILE"
+      fi
     fi
-  done
-
-  if [ "$ok" -eq 0 ]; then
-    echo "Open-Box: 所有内置镜像全部不可用或安装失败" >> "$LOGFILE"
-    echo "Open-Box: 请用 update.sh / 手动下载 install.sh 安装，或把可用镜像前缀加入 OPENBOX_MIRRORS" >> "$LOGFILE"
-  fi
-else
-  echo "Open-Box 已安装，跳过" >> "$LOGFILE"
-fi
+    ;;
+  *)
+    echo "Open-Box 自动安装已关闭（ENABLE_OPENBOX=$OPENBOX_ENABLE）" >> "$LOGFILE"
+    ;;
+esac
 exit 0

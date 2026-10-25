@@ -18,7 +18,7 @@
 
 ## 🤔 这是什么？
 基于 CI 的 ImageBuilder 工作流，用于自动化构建 ImmortalWrt 固件。
-> 1、支持自定义固件大小 默认1GB 不建议设置过大 推荐1G-2G 更大需求可通过自定义插件里的扩容插件自行扩容<br>
+> 1、支持自定义固件大小 默认 3G（可选 1G-4G，推荐 1G-2G；更大需求可用扩容插件）<br>
 > 2、支持可选预安装docker（可选）支持在UI上勾选是否集成商店 （24.10.6以下）<br>
 > 3、支持按需增加[第三方软件](https://github.com/wukongdaily/store/blob/master/README.md)  如何集成 https://github.com/wukongdaily/AutoBuildImmortalWrt/discussions/209 <br>
 > 4、点击这里查看👉🏻[全部支持的机型列表](https://github.com/wukongdaily/AutoBuildImmortalWrt/blob/master/SUPPORT.md) 👈🏻<br>
@@ -30,6 +30,13 @@
 ## [基本用法步骤](https://github.com/wukongdaily/AutoBuildImmortalWrt/wiki) 👈🏻
 1、fork本项目<br>
 2、在fork后的项目中 点击【action】 找到需要的工作流后 run-workflow<br>
+
+## 🔐 安全须知（必读）
+
+- **root 密码**：固件默认 **root 无密码**，首次登录 LuCI / SSH 必须立即设置强密码。
+- **防火墙**：WAN 口入站默认 **拒绝（REJECT）**，SSH（dropbear）仅监听 **LAN**，避免公网无密码登录。如确需从外网管理，请在「网络 → 防火墙 → WAN 入站」改为允许，并务必先设置 root 密码。
+- **Open-Box 自动安装**：本固件在**首次启动**时会从 `liandu2024/Open-Box` 自动安装 Open-Box 代理（多镜像容灾 + SHA256 校验）。可在工作流中通过 `enable_openbox` 关闭；如需校验完整性，可在 `files/etc/uci-defaults/99-custom.sh` 的 `OPENBOX_EXPECTED_SHA256` 中填入期望哈希。
+- **PPPoE 凭据**：宽带账号/密码以明文写入固件内 `/etc/config/pppoe-settings`，请勿使用弱口令，且发布的 Release 中不要包含他人凭据。
 
 ## 如何查询imm仓库内有哪些插件
 https://mirrors.sjtug.sjtu.edu.cn/immortalwrt/releases/24.10.4/packages/aarch64_generic/luci/
@@ -61,8 +68,8 @@ https://www.youtube.com/watch?v=7i6BQeitUtE
 - 上述特点 你都可以通过 `99-custom.sh` 配置和调整
 
 ## 特别说明
-本项目构建的固件 为了易用性 wan口防火墙规则入站 是开启的，待首次调试完毕后，建议自行关闭。操作方法如下
-网络——防火墙—— wan 的入站 选择拒绝 然后保存并应用即可。更多讨论[ 请参考这个话题](https://github.com/wukongdaily/AutoBuildImmortalWrt/discussions/341)
+本项目构建的固件 **WAN 口防火墙入站默认已为「拒绝（REJECT）」**（安全优先），SSH 仅监听 LAN。
+如你确实需要开放 WAN 入站（例如从外网管理），请到 网络——防火墙—— WAN 的入站 选择「允许」并保存应用；**但务必先设置 root 强密码**。更多讨论[ 请参考这个话题](https://github.com/wukongdaily/AutoBuildImmortalWrt/discussions/341)
 <img width="3860" height="870" alt="image" src="https://github.com/user-attachments/assets/d826bccd-f0df-4d4a-877d-b711b81fcf1a" />
 同时此项设置的相关代码详见 `files/etc/uci-defaults/99-custom.sh` 行首
 

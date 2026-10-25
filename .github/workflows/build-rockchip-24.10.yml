@@ -1,5 +1,8 @@
 name: Auto-R4S Build 24.10.x Rockchip
 
+permissions:
+  contents: write
+
 on:
   workflow_dispatch:
     inputs:

@@ -1,5 +1,8 @@
 name: Auto-R4S Build 25.12.x Rockchip
 
+permissions:
+  contents: write
+
 # 目前此工作流可以集成 imm 仓库内软件；第三方软件暂不能集成（待开发）
 on:
   workflow_dispatch:

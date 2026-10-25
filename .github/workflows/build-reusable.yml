@@ -93,25 +93,63 @@ jobs:
 
       - name: Fetch third-party packages (pushbot / accesscontrol / openlist2)
         run: |
+          set +e
           mkdir -p "${{ github.workspace }}/shell/pushbot" "${{ github.workspace }}/shell/accesscontrol" "${{ github.workspace }}/shell/openlist2"
           base="https://down.dllkids.xyz/openwrt-feed/${{ inputs.thirdparty_feed }}/aarch64_generic"
-          fetch() {
-            local name="$1" out="$2"
-            echo "下载 $name ..."
-            curl -fsSL -o "${{ github.workspace }}/shell/$out" "$base/$name" \
-              || { echo "::error::下载 $name 失败"; exit 1; }
-            if [ ! -s "${{ github.workspace }}/shell/$out" ]; then
-              echo "::error::$name 下载为空（疑似源站变更），中止构建"; exit 1
-            fi
+          echo "第三方 feed: $base"
+
+          # 动态拉取目录索引，按模式匹配最新文件名（避免版本写死导致 404）
+          if ! index=$(curl -fsSL --max-time 30 "$base/" 2>/dev/null); then
+            echo "::warning::无法获取第三方 feed 目录索引，跳过所有第三方包"
+            echo 'CUSTOM_PACKAGES="$CUSTOM_PACKAGES"' >> shell/${{ inputs.custom_pkgs_file }}
+            exit 0
+          fi
+
+          # 从索引中匹配某个包的最新文件名；patterns 命中其一，exclude 排除变体
+          resolve() {
+            local patterns="$1" exclude="$2" f
+            f=$(printf '%s\n' "$index" | grep -oiE '[A-Za-z0-9._~-]+\.(ipk|apk)' \
+                | grep -E "$patterns" | grep -vE "${exclude:-^$}" | sort -V | tail -n1)
+            [ -n "$f" ] && { echo "$f"; return 0; }
+            return 1
           }
-          fetch "luci-app-pushbot_27.222.35022~a09d467_all.${{ inputs.pkg_ext }}" "pushbot/luci-app-pushbot.${{ inputs.pkg_ext }}"
-          fetch "luci-app-accesscontrol_27.150.62553~79d9f36_all.${{ inputs.pkg_ext }}" "accesscontrol/luci-app-accesscontrol.${{ inputs.pkg_ext }}"
-          fetch "luci-app-openlist2_27.211.38379~c992d8e_all.${{ inputs.pkg_ext }}" "openlist2/luci-app-openlist2.${{ inputs.pkg_ext }}"
-          fetch "openlist2_4.2.4-r1_aarch64_generic.${{ inputs.pkg_ext }}" "openlist2/openlist2.${{ inputs.pkg_ext }}"
-          echo 'CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-app-pushbot bash curl jq smartmontools iputils-arping"' >> shell/${{ inputs.custom_pkgs_file }}
-          echo 'CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-app-accesscontrol"' >> shell/${{ inputs.custom_pkgs_file }}
-          echo 'CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-app-openlist2 openlist2"' >> shell/${{ inputs.custom_pkgs_file }}
-          echo "✅ 第三方包已就绪（注意：来自第三方 feed，未做内容校验，请自行评估信任）"
+
+          # 下载到指定子目录；成功返回 0，失败仅告警不中断
+          download() {
+            local name="$1" destdir="$2"
+            echo "下载 $name ..."
+            if curl -fsSL --max-time 60 -o "${{ github.workspace }}/shell/$destdir/$name" "$base/$name"; then
+              if [ -s "${{ github.workspace }}/shell/$destdir/$name" ]; then
+                echo "✅ $name"; return 0
+              fi
+              echo "::warning::$name 下载为空，跳过"; rm -f "${{ github.workspace }}/shell/$destdir/$name"; return 1
+            fi
+            echo "::warning::$name 下载失败，跳过"; return 1
+          }
+
+          ok_pushbot=0
+          p=$(resolve 'luci-app-pushbot[._-]' '') && download "$p" pushbot && ok_pushbot=1
+
+          ok_ac=0
+          a=$(resolve 'luci-app-accesscontrol[._-]' 'plus') && download "$a" accesscontrol && ok_ac=1
+
+          ok_ol_app=0
+          o=$(resolve 'luci-app-openlist2[._-]' '') && download "$o" openlist2 && ok_ol_app=1
+
+          ok_ol_daemon=0
+          d=$(resolve 'openlist2[._-]4\.' 'luci-app-openlist2') && download "$d" openlist2 && ok_ol_daemon=1
+
+          pkgs=""
+          [ "$ok_pushbot" = 1 ] && pkgs="$pkgs luci-app-pushbot bash curl jq smartmontools iputils-arping"
+          [ "$ok_ac" = 1 ] && pkgs="$pkgs luci-app-accesscontrol"
+          if [ "$ok_ol_app" = 1 ] && [ "$ok_ol_daemon" = 1 ]; then
+            pkgs="$pkgs luci-app-openlist2 openlist2"
+          elif [ "$ok_ol_app" = 1 ] || [ "$ok_ol_daemon" = 1 ]; then
+            echo "::warning::openlist2 仅下载到部分组件（app=$ok_ol_app daemon=$ok_ol_daemon），为避免构建失败暂不集成 openlist2"
+          fi
+
+          echo "CUSTOM_PACKAGES=\"\$CUSTOM_PACKAGES$pkgs\"" >> shell/${{ inputs.custom_pkgs_file }}
+          echo "✅ 第三方包处理完成（来自第三方 feed，未做内容校验，请自行评估信任）"
 
       - name: Build ImmortalWrt ${{ inputs.series }}
         run: |

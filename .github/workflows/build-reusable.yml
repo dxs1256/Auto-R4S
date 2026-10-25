@@ -84,11 +84,6 @@ jobs:
               echo "::error::启用 PPPoE 时必须填写宽带账号与密码"
               exit 1
             fi
-            pw="${{ inputs.pppoe_password }}"
-            if [ "$pw" = "123456" ] || [ "${#pw}" -lt 6 ]; then
-              echo "::error::PPPoE 密码过弱（禁止 123456 / 长度<6），请更换后再构建"
-              exit 1
-            fi
           fi
 
       - name: Fetch third-party packages (pushbot / accesscontrol / openlist2)

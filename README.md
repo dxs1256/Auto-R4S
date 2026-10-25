@@ -36,7 +36,7 @@
 - **root 密码**：固件默认 **root 无密码**，首次登录 LuCI / SSH 必须立即设置强密码。
 - **防火墙**：WAN 口入站默认 **拒绝（REJECT）**，SSH（dropbear）仅监听 **LAN**，避免公网无密码登录。如确需从外网管理，请在「网络 → 防火墙 → WAN 入站」改为允许，并务必先设置 root 密码。
 - **Open-Box 自动安装**：本固件在**首次启动**时会从 `liandu2024/Open-Box` 自动安装 Open-Box 代理（多镜像容灾 + SHA256 校验）。可在工作流中通过 `enable_openbox` 关闭；如需校验完整性，可在 `files/etc/uci-defaults/99-custom.sh` 的 `OPENBOX_EXPECTED_SHA256` 中填入期望哈希。
-- **PPPoE 凭据**：宽带账号/密码以明文写入固件内 `/etc/config/pppoe-settings`，请勿使用弱口令，且发布的 Release 中不要包含他人凭据。
+- **PPPoE 凭据**：宽带账号/密码以明文写入固件内 `/etc/config/pppoe-settings`。运营商账号与物理线路绑定，泄露通常无法被他人直接使用；若不想固件内留存凭据，可关闭 PPPoE 后自行在后台配置。启用 PPPoE 时账号/密码为必填（仅校验非空，不限制强度）。
 
 ## 如何查询imm仓库内有哪些插件
 https://mirrors.sjtug.sjtu.edu.cn/immortalwrt/releases/24.10.4/packages/aarch64_generic/luci/

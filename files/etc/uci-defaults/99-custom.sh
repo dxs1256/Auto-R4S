@@ -14,12 +14,22 @@ uci set "dhcp.@domain[-1].name=time.android.com"
 uci set "dhcp.@domain[-1].ip=203.107.6.88"
 
 # 检查配置文件pppoe-settings是否存在 该文件由build.sh动态生成
+# 安全说明：这里刻意【不使用 . 直接 source 该文件】。
+# 宽带密码可能含 $() / 反引号 / 引号 / 空格等特殊字符，直接 source 会被 shell 当作命令执行或截断，
+# 轻则配置损坏，重则首启时执行任意命令。改为按行取值（只做文本提取，不做 shell 解析）。
 SETTINGS_FILE="/etc/config/pppoe-settings"
+enable_pppoe="no"
+pppoe_account=""
+pppoe_password=""
 if [ ! -f "$SETTINGS_FILE" ]; then
     echo "PPPoE settings file not found. Skipping." >>$LOGFILE
 else
     # 读取pppoe信息($enable_pppoe、$pppoe_account、$pppoe_password)
-    . "$SETTINGS_FILE"
+    # 取 "key=" 之后到行尾的原样文本
+    enable_pppoe=$(sed -n 's/^enable_pppoe=//p' "$SETTINGS_FILE" | tail -n1)
+    pppoe_account=$(sed -n 's/^pppoe_account=//p' "$SETTINGS_FILE" | tail -n1)
+    pppoe_password=$(sed -n 's/^pppoe_password=//p' "$SETTINGS_FILE" | tail -n1)
+    echo "PPPoE settings loaded (enable=$enable_pppoe)." >>$LOGFILE
 fi
 
 # 1. 先获取所有物理接口列表
@@ -69,7 +79,8 @@ elif [ "$count" -gt 1 ]; then
     uci set network.wan6.proto='dhcpv6'
 
     # 查找 br-lan 设备 section
-    section=$(uci show network | awk -F '[.=]' '/\.@?device\[\d+\]\.name=.br-lan.$/ {print $2; exit}')
+    # 注意：\\d 不是 POSIX awk 正则，BusyBox awk 下会当字面 'd'，故改用 [0-9]+
+    section=$(uci show network | awk -F '[.=]' '/\.@?device\[[0-9]+\]\.name=.br-lan.$/ {print $2; exit}')
     if [ -z "$section" ]; then
         echo "error：cannot find device 'br-lan'." >>$LOGFILE
     else
@@ -209,20 +220,21 @@ fi
 #  - install.sh 下载后做 SHA256 校验：优先用仓库同路径的 install.sh.sha256 校验和；
 #    否则用构建时写入的 OPENBOX_EXPECTED_SHA256；都没有则仅做基础检查并明确告警（仍有供应链风险）。
 #  - 全镜像校验/安装失败则不动 /opt/open-box。
+# 注意：必须先 source 开关配置，再据此计算 install.sh 路径，否则开关/REF 不生效
+OPENBOX_SETTINGS="/etc/config/openbox-settings"
+ENABLE_OPENBOX="yes"
+OPENBOX_REF="main"
+OPENBOX_EXPECTED_SHA256=""
+if [ -f "$OPENBOX_SETTINGS" ]; then
+  . "$OPENBOX_SETTINGS"
+fi
+
 OPENBOX_REPO="liandu2024/Open-Box"
-OPENBOX_REF="${OPENBOX_REF:-main}"
 OPENBOX_INSTALL_SH="$OPENBOX_REF/scripts/install.sh"
 OPENBOX_INSTALLED="/opt/open-box/.installed"
 OPENBOX_TMP="/tmp/open-box-install.sh"
 OPENBOX_SHA_TMP="/tmp/open-box-install.sh.sha256"
 LOGFILE="/etc/config/uci-defaults-log.txt"
-
-OPENBOX_SETTINGS="/etc/config/openbox-settings"
-OPENBOX_ENABLE="yes"
-OPENBOX_EXPECTED_SHA256=""
-if [ -f "$OPENBOX_SETTINGS" ]; then
-  . "$OPENBOX_SETTINGS"
-fi
 
 # 镜像前缀列表（优先级从高到低）
 OPENBOX_MIRRORS="
@@ -286,7 +298,7 @@ ob_try_install() {
   echo "Open-Box: 镜像 $m 执行成功但 /opt/open-box 不存在，视为失败" >> "$LOGFILE"; return 1
 }
 
-case "$OPENBOX_ENABLE" in
+case "$ENABLE_OPENBOX" in
   yes|true|1)
     if [ -f "$OPENBOX_INSTALLED" ]; then
       echo "Open-Box 已安装，跳过" >> "$LOGFILE"
@@ -304,7 +316,7 @@ case "$OPENBOX_ENABLE" in
     fi
     ;;
   *)
-    echo "Open-Box 自动安装已关闭（ENABLE_OPENBOX=$OPENBOX_ENABLE）" >> "$LOGFILE"
+    echo "Open-Box 自动安装已关闭（ENABLE_OPENBOX=$ENABLE_OPENBOX）" >> "$LOGFILE"
     ;;
 esac
 exit 0

@@ -25,7 +25,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           KEEP_DAYS: ${{ github.event.inputs.keep_days }}
         run: |
-          : "${KEEP_DAYS:=1}"
+          : "${KEEP_DAYS:=7}"
+          # 防止误填过小或非法值，导致构建日志/产物被过早删除
+          case "$KEEP_DAYS" in
+            ''|*[!0-9]*) echo "⚠️ KEEP_DAYS 非法('$KEEP_DAYS')，改用默认 7"; KEEP_DAYS=7 ;;
+            *) if [ "$KEEP_DAYS" -lt 7 ]; then echo "⚠️ KEEP_DAYS=$KEEP_DAYS 过小，按 7 处理"; KEEP_DAYS=7; fi ;;
+          esac
           THRESHOLD="$(date -u -d "${KEEP_DAYS} days ago" '+%Y-%m-%dT%H:%M:%SZ')"
           echo "阈值时间(UTC)：$THRESHOLD"
 

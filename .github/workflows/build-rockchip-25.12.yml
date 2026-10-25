@@ -15,6 +15,7 @@ on:
         options:
           - 25.12.0
           - 25.12.1
+          - 25.12.2
       profile:
         type: choice
         description: "软路由型号"

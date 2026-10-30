@@ -37,6 +37,34 @@ OPENBOX_REF=${OPENBOX_REF:-main}
 OPENBOX_EXPECTED_SHA256=${OPENBOX_EXPECTED_SHA256:-}
 EOF
 
+# ---------- Open-Box 安装包内联 ----------
+# 目的：把安装包在构建期下载并打进固件，首启由本地 httpd 提供，省掉开机下载 76MB
+# （实测 gh-proxy + PPPoE 约 124KB/s，要 13 分钟）。内联失败则自动回退在线安装。
+#
+# 路径说明：上游 install.sh 在 --mirror 模式下会请求
+#   <prefix>/https://github.com/liandu2024/Open-Box/releases/latest/download/open-box-linux-arm64.tar.gz
+# 因此本地 docroot 要伪造出 https:/github.com/... 这条目录树（Linux 下 // 等价于 /）。
+if [ "${ENABLE_OPENBOX:-yes}" != "no" ]; then
+  OB_REPO="liandu2024/Open-Box"
+  OB_BASE="https://github.com/${OB_REPO}/releases/latest/download"
+  OB_ASSET="open-box-linux-arm64.tar.gz"
+  OB_DIR="/home/build/immortalwrt/files/usr/share/openbox-pkg"
+  OB_WWW="${OB_DIR}/www/https:/github.com/${OB_REPO}/releases/latest/download"
+  mkdir -p /tmp/ob "$OB_WWW"
+  if curl -fsSL --connect-timeout 10 --max-time 900 -o "/tmp/ob/${OB_ASSET}" "${OB_BASE}/${OB_ASSET}" \
+     && curl -fsSL --connect-timeout 10 --max-time 60 -o "/tmp/ob/${OB_ASSET}.sha256" "${OB_BASE}/${OB_ASSET}.sha256" \
+     && ( cd /tmp/ob && sha256sum -c "${OB_ASSET}.sha256" >/dev/null 2>&1 ) \
+     && curl -fsSL --connect-timeout 10 --max-time 60 -o /tmp/ob/install.sh "https://raw.githubusercontent.com/${OB_REPO}/main/scripts/install.sh" \
+     && sh -n /tmp/ob/install.sh; then
+    cp -f "/tmp/ob/${OB_ASSET}" "/tmp/ob/${OB_ASSET}.sha256" "${OB_WWW}/"
+    cp -f /tmp/ob/install.sh "${OB_DIR}/install.sh"
+    echo "Open-Box: 已内联安装包 $(du -h "/tmp/ob/${OB_ASSET}" 2>/dev/null | cut -f1)（首启本地安装）"
+  else
+    echo "Open-Box: 安装包内联失败，首启将回退在线安装"
+    rm -rf "${OB_DIR}"
+  fi
+fi
+
 if [ -z "$CUSTOM_PACKAGES" ]; then
   echo "⚪️ 未选择 任何第三方软件包"
 else

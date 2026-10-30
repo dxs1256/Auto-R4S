@@ -87,6 +87,7 @@ OPENBOX_REPO="liandu2024/Open-Box"
 OPENBOX_INSTALL_SH="$OPENBOX_REF/scripts/install.sh"
 OPENBOX_TMP="/tmp/open-box-install.sh"
 OPENBOX_SHA_TMP="/tmp/open-box-install.sh.sha256"
+OPENBOX_LOCAL_DIR="/usr/share/openbox-pkg"
 
 # 镜像前缀列表（优先级从高到低）
 OPENBOX_MIRRORS="
@@ -150,13 +151,41 @@ ob_try_install() {
     echo "Open-Box: 镜像 $m 执行成功但 /opt/open-box 不存在，视为失败" >> "$LOGFILE"; return 1
 }
 
+# ---------- 4.5) 本地安装包模式（构建期内联，首启零下载）----------
+# 构建时把安装包与 install.sh 打进 /usr/share/openbox-pkg；这里起一个临时 busybox httpd，
+# 让上游安装器通过 --mirror http://127.0.0.1:18080 从本地取包。
+# 失败（无内联、busybox 无 httpd、安装报错）则返回 1，由调用方回退在线安装。
+ob_local_install() {
+    [ -x "$OPENBOX_LOCAL_DIR/install.sh" ] || return 1
+    [ -f "$OPENBOX_LOCAL_DIR/www/https:/github.com/liandu2024/Open-Box/releases/latest/download/open-box-linux-arm64.tar.gz" ] || return 1
+    busybox httpd -h "$OPENBOX_LOCAL_DIR/www" -p 18080 >/dev/null 2>&1 &
+    _httpd_pid=$!
+    sleep 1
+    echo "Open-Box: 使用本地安装包（http://127.0.0.1:18080），无需下载" >> "$LOGFILE"
+    sh "$OPENBOX_LOCAL_DIR/install.sh" --mirror "http://127.0.0.1:18080" >> "$LOGFILE" 2>&1
+    _rc=$?
+    kill "$_httpd_pid" 2>/dev/null
+    if [ "$_rc" -eq 0 ] && [ -d /opt/open-box ]; then
+        touch "$OPENBOX_INSTALLED"
+        echo "Open-Box: 本地安装包安装完成" >> "$LOGFILE"
+        return 0
+    fi
+    echo "Open-Box: 本地安装包安装失败(rc=$_rc)，回退在线安装" >> "$LOGFILE"
+    return 1
+}
+
 # ---------- 5) 主流程 ----------
-echo "Open-Box: 未安装，开始自动安装（多镜像容灾 + 校验）..." >> "$LOGFILE"
+echo "Open-Box: 未安装，开始自动安装..." >> "$LOGFILE"
 ok=0
-for m in $OPENBOX_MIRRORS; do
-    echo "Open-Box: 探测镜像 $m ..." >> "$LOGFILE"
-    if ob_try_install "$m"; then ok=1; break; fi
-done
+if ob_local_install; then
+    ok=1
+else
+    echo "Open-Box: 进入在线安装（多镜像容灾 + 校验）..." >> "$LOGFILE"
+    for m in $OPENBOX_MIRRORS; do
+        echo "Open-Box: 探测镜像 $m ..." >> "$LOGFILE"
+        if ob_try_install "$m"; then ok=1; break; fi
+    done
+fi
 if [ "$ok" -eq 0 ]; then
     echo "Open-Box: 所有内置镜像均不可用或校验/安装失败，本次跳过（下次开机自动重试）" >> "$LOGFILE"
     echo "Open-Box: 可手动下载 install.sh 安装，或把可用镜像前缀加入 OPENBOX_MIRRORS" >> "$LOGFILE"

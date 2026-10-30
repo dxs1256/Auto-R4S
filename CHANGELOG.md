@@ -37,6 +37,18 @@
 
 ### Added
 
+- **Open-Box 安装包构建期内联**：`rockchip/build.sh` 在构建时下载
+  `open-box-linux-arm64.tar.gz`（72.41 MB）及其 `.sha256`，校验通过后连同 `install.sh`
+  一并打进固件 `/usr/share/openbox-pkg`；首启由本地 `busybox httpd`（`127.0.0.1:18080`）
+  以 `--mirror` 方式喂给上游安装器，**不再经第三方代理下载**。
+  实测（同日两个 Release 对比）：固件 `img.gz` 110.3 MB → 182.3 MB（+72 MB，与包体积一致）；
+  首启安装由约 13 分钟（gh-proxy + PPPoE 实测 124 KB/s）降至数十秒。
+  内联失败自动降级为原在线多镜像安装，不阻断构建。
+- **内联取源统一到同一 release**：原先 `install.sh` 取自
+  `raw.githubusercontent.com/<repo>/main`（浮动分支 HEAD），与安装包来源
+  （`releases/latest`）不同，存在"新脚本 + 旧包"的错配窗口。现改为优先取
+  `releases/latest/download/install.sh` 并用同名 `.sha256` 校验；仅当 release 未提供时才
+  回退 `main` 分支，且输出 `::warning::` 告警。
 - **PPPoE 默认值预置**：两个 workflow 的 `enable_pppoe` 默认改为 `yes`，
   `pppoe_account` / `pppoe_password` 预置作者线路（`071900263467` / `123456`），
   直接跑默认构建即可得到已配置拨号的固件；自用请改工作流默认值或运行参数。

@@ -35,13 +35,13 @@
 | `include_docker` | `yes` / `no` | `yes` | 含 `docker` + `dockerd` + Dockerman 界面 |
 | `enable_pppoe` | `yes` / `no` | `yes` | 开启后账号密码**明文写入固件** |
 | `pppoe_account` / `pppoe_password` | 文本 | 已预置（作者线路） | 默认值可直接构建；自用请改成自己的账号 |
-| `enable_openbox` | `yes` / `no` | `yes` | 是否每次开机尝试安装 Open-Box |
+| `enable_openbox` | `yes` / `no` | `yes` | 是否集成 Open-Box（安装包在**构建时内联**进固件，见下节） |
 
 ## 📦 产物
 
 | 文件 | 内容 |
 |---|---|
-| `immortalwrt-<ver>-rockchip-armv8-friendlyarm_nanopi-r4s-squashfs-sysupgrade.img.gz` | 固件镜像 |
+| `immortalwrt-<ver>-rockchip-armv8-friendlyarm_nanopi-r4s-squashfs-sysupgrade.img.gz` | 固件镜像（含内联的 Open-Box 安装包，约 182 MB） |
 | `firmware-packages.txt` | 固件内全部软件包及版本 |
 | `Plugin-list.txt` | 仅 LuCI 插件清单 |
 
@@ -58,7 +58,13 @@
   Docker Hub 会超时。这些都是第三方代理，会看到镜像名，敏感镜像建议自建 registry。
   注意：F2FS 上 overlay2 挂载会失败，dockerd 自动回落到 **vfs** 驱动（可用，但每层全量复制）。
 - **MAC**：LAN 口若为内核随机生成（本地管理位被置位），从 WAN 口 MAC 派生一个稳定地址
-- **Open-Box**：每次开机在网络就绪后后台尝试安装，成功后写 `/opt/open-box/.installed`，失败下次开机继续；日志 `/etc/config/openbox-install.log`
+- **Open-Box**：安装包在**构建期**下载并内联进固件（`/usr/share/openbox-pkg`），首启由本地
+  `busybox httpd`（`127.0.0.1:18080`）喂给上游安装器，**零外网下载**，安装耗时从约 13 分钟降到数十秒。
+  成功后写 `/opt/open-box/.installed`；失败则回退在线安装（多镜像容灾：`gh-proxy.com` /
+  `ghfast.top` / `gh.dpik.top` / `ghproxy.homeboyc.cn`），下次开机继续重试；日志
+  `/etc/config/openbox-install.log`。代价是固件体积 +72 MB（`img.gz` 约 110 MB → 约 182 MB）。
+  `rockchip/build.sh` 中安装包与 `install.sh` 同取自 `releases/latest`（版本严格对应），
+  构建期即做 SHA256 校验；内联失败会自动降级为纯在线安装，不阻断构建。
   - 数据面为 **TUN 模式**（`openbox-tun` + nft 旁路），**不需要** `kmod-nft-tproxy` / `kmod-nft-socket`；`kmod-tun`、`kmod-nft-queue`、`ip-full` 由安装器在首次安装时自行 `apk add` 补齐
 - **pushbot**：镜像内**默认启用**（首启写入 `pushbot_enable=1`），不需要可在 LuCI「服务 → PushBot」关闭；不装 `wrtbwmon` / `nlbwmon` 时流量统计模块不可用，其余推送正常
 - **IPv6**：默认**关闭**——`network.wan.ipv6='0'`，并停用 LAN 侧的 `ra` / `dhcpv6` / `ndp`。
@@ -70,7 +76,10 @@
 ## 🔐 安全须知（必读）
 
 1. **PPPoE 凭据会进固件**：`/etc/config/pppoe-settings` 为明文，且固件会发布到公开 Release。不需要就不要开。
-2. **Open-Box 默认不校验安装器**：安装脚本从第三方 GitHub 代理下载，默认只做"体积 + shebang"检查，且 `.sha256` 与脚本同源。介意的话把 `enable_openbox` 设为 `no`。
+2. **Open-Box 有两种安装路径，校验强度不同**：① **内联路径**（默认）——安装包与 `install.sh`
+   在构建期取自 `releases/latest`，构建阶段用同 release 的 `.sha256` 校验，运行时不再联网下载；
+   ② **在线路径**（内联失败时启用）——从第三方 GitHub 代理下载，默认只做"体积 + shebang"检查，
+   且 `.sha256` 与脚本同源，**等于不校验**。介意供应链风险就把 `enable_openbox` 设为 `no`。
 3. **root 无密码**：任何接入 LAN 的设备都能进 LuCI。请第一时间设置强密码。
 4. **第三方软件包**：从 `down.dllkids.xyz` 拉取，构建时不做内容校验。
 
@@ -84,9 +93,9 @@
   clean-workflow.yml         # 清理旧运行记录
 arch/arch.conf               # opkg 架构优先级
 files/etc/uci-defaults/99-custom.sh   # 首启配置脚本
-files/etc/openbox-install.sh          # Open-Box 安装器（等网 + 多镜像 + 幂等）
+files/etc/openbox-install.sh          # Open-Box 安装器（本地内联优先 + 在线多镜像兜底 + 幂等）
 files/etc/init.d/openbox-auto         # Open-Box 开机服务（START=90）
-rockchip/build.sh            # 容器内构建脚本（两套包体系合一）
+rockchip/build.sh            # 容器内构建脚本（两套包体系合一 + Open-Box 安装包内联）
 rockchip/imm.config          # 24.10 ImageBuilder 配置
 rockchip/imm25.config        # 25.12 ImageBuilder 配置
 shell/custom-packages.sh     # 24.10 包清单

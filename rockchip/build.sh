@@ -38,12 +38,16 @@ OPENBOX_EXPECTED_SHA256=${OPENBOX_EXPECTED_SHA256:-}
 EOF
 
 # ---------- Open-Box 安装包内联 ----------
-# 目的：把安装包在构建期下载并打进固件，首启由本地 httpd 提供，省掉开机下载 76MB
+# 目的：把安装包在构建期下载并打进固件，首启由本地 httpd 提供，省掉开机下载 72MB
 # （实测 gh-proxy + PPPoE 约 124KB/s，要 13 分钟）。内联失败则自动回退在线安装。
 #
 # 路径说明：上游 install.sh 在 --mirror 模式下会请求
 #   <prefix>/https://github.com/liandu2024/Open-Box/releases/latest/download/open-box-linux-arm64.tar.gz
 # 因此本地 docroot 要伪造出 https:/github.com/... 这条目录树（Linux 下 // 等价于 /）。
+#
+# 取源约定：包与安装脚本都取自同一个 release（latest），保证版本严格对应。
+# 早先写法从 raw.githubusercontent.com/<repo>/main 取 install.sh，那是浮动分支 HEAD，
+# 一旦上游改了脚本而 release 里的包还是旧的，就会出现「新脚本 + 旧包」的错配。
 if [ "${ENABLE_OPENBOX:-yes}" != "no" ]; then
   OB_REPO="liandu2024/Open-Box"
   OB_BASE="https://github.com/${OB_REPO}/releases/latest/download"
@@ -51,16 +55,44 @@ if [ "${ENABLE_OPENBOX:-yes}" != "no" ]; then
   OB_DIR="/home/build/immortalwrt/files/usr/share/openbox-pkg"
   OB_WWW="${OB_DIR}/www/https:/github.com/${OB_REPO}/releases/latest/download"
   mkdir -p /tmp/ob "$OB_WWW"
+
+  # 1) 安装包 + 校验和：两者都必须成功，否则整块放弃（避免半个包进固件）
   if curl -fsSL --connect-timeout 10 --max-time 900 -o "/tmp/ob/${OB_ASSET}" "${OB_BASE}/${OB_ASSET}" \
      && curl -fsSL --connect-timeout 10 --max-time 60 -o "/tmp/ob/${OB_ASSET}.sha256" "${OB_BASE}/${OB_ASSET}.sha256" \
-     && ( cd /tmp/ob && sha256sum -c "${OB_ASSET}.sha256" >/dev/null 2>&1 ) \
-     && curl -fsSL --connect-timeout 10 --max-time 60 -o /tmp/ob/install.sh "https://raw.githubusercontent.com/${OB_REPO}/main/scripts/install.sh" \
-     && sh -n /tmp/ob/install.sh; then
-    cp -f "/tmp/ob/${OB_ASSET}" "/tmp/ob/${OB_ASSET}.sha256" "${OB_WWW}/"
-    cp -f /tmp/ob/install.sh "${OB_DIR}/install.sh"
-    echo "Open-Box: 已内联安装包 $(du -h "/tmp/ob/${OB_ASSET}" 2>/dev/null | cut -f1)（首启本地安装）"
+     && ( cd /tmp/ob && sha256sum -c "${OB_ASSET}.sha256" >/dev/null 2>&1 ); then
+
+    # 2) 安装脚本：优先同 release 版本；取不到才回退 main 分支（并告警）
+    ob_script_ok="no"
+    if curl -fsSL --connect-timeout 10 --max-time 60 -o /tmp/ob/install.sh "${OB_BASE}/install.sh" \
+       && sh -n /tmp/ob/install.sh 2>/dev/null; then
+      if curl -fsSL --connect-timeout 10 --max-time 30 -o /tmp/ob/install.sh.sha256 "${OB_BASE}/install.sh.sha256" 2>/dev/null \
+         && ( cd /tmp/ob && sha256sum -c install.sh.sha256 >/dev/null 2>&1 ); then
+        echo "Open-Box: install.sh 取自 release 并已通过 SHA256 校验"
+      else
+        rm -f /tmp/ob/install.sh.sha256
+        echo "::warning::Open-Box: install.sh 取自 release，但无可用校验和，仅做语法检查"
+      fi
+      ob_script_ok="yes"
+    else
+      rm -f /tmp/ob/install.sh
+      echo "::warning::Open-Box: release 未提供 install.sh，回退 main 分支（该脚本为浮动版本）"
+      if curl -fsSL --connect-timeout 10 --max-time 60 -o /tmp/ob/install.sh \
+           "https://raw.githubusercontent.com/${OB_REPO}/main/scripts/install.sh" \
+         && sh -n /tmp/ob/install.sh 2>/dev/null; then
+        ob_script_ok="yes"
+      fi
+    fi
+
+    if [ "$ob_script_ok" = "yes" ]; then
+      cp -f "/tmp/ob/${OB_ASSET}" "/tmp/ob/${OB_ASSET}.sha256" "${OB_WWW}/"
+      cp -f /tmp/ob/install.sh "${OB_DIR}/install.sh"
+      echo "Open-Box: 已内联安装包 $(du -h "/tmp/ob/${OB_ASSET}" 2>/dev/null | cut -f1)（首启本地安装）"
+    else
+      echo "Open-Box: 安装脚本获取失败，放弃内联，首启将回退在线安装"
+      rm -rf "${OB_DIR}"
+    fi
   else
-    echo "Open-Box: 安装包内联失败，首启将回退在线安装"
+    echo "Open-Box: 安装包或校验和获取失败，首启将回退在线安装"
     rm -rf "${OB_DIR}"
   fi
 fi

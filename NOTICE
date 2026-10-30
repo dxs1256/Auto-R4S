@@ -1,0 +1,45 @@
+Auto-R4S
+Copyright (C) 2026 dxs1256
+
+本作品是以下项目的衍生作品（derivative work）：
+
+    wukongdaily/ImmortalWrt-ImageBuilder
+    https://github.com/wukongdaily/ImmortalWrt-ImageBuilder
+    许可证：GNU General Public License v3.0
+
+上游项目本身基于 ImmortalWrt 官方 ImageBuilder 构建固件；
+ImmortalWrt 与 OpenWrt 的版权归其各自贡献者所有。
+
+本衍生作品同样以 GPL-3.0 发布，完整许可文本见 LICENSE。
+
+------------------------------------------------------------------
+修改说明（GPLv3 §5a：显著标注修改及大致日期）
+------------------------------------------------------------------
+
+起始时间：2026-08；最近一次整理：2026-10-30
+
+主要修改：
+
+1. 构建流水线重写
+   - 上游按平台复制的多套 workflow 收敛为 build-reusable.yml + 两个入口；
+   - 上游 build24.sh / build25.sh 合并为 rockchip/build.sh（按 BUILD_SERIES 分流）；
+   - 仅保留 rockchip/armv8 的 friendlyarm_nanopi-r4s 机型，移除其余平台与机型。
+
+2. 新增能力
+   - 工作流 UI 直接配置 PPPoE（上游无）；
+   - Open-Box 开机自动安装（等网络就绪 + 多镜像 + 幂等 + 单实例锁）；
+   - 24.10（opkg）与 25.12（apk）双体系包清单；
+   - 第三方包按 feed 目录索引动态解析版本；
+   - 多网口机型 LAN 随机 MAC 钉死；
+   - 发布产物附 firmware-packages.txt / Plugin-list.txt。
+
+3. 安全加固
+   - PPPoE 配置改为逐行提取（sed），不再 source 用户输入；
+   - dropbear 改用 DirectInterface 绑定 LAN；
+   - Open-Box 安装器改为独立脚本 + 传统 init 服务，失败可重试。
+
+4. 文档
+   - README 重写为本项目自述；
+   - 新增 NOTICE / CHANGELOG / SECURITY。
+
+完整逐条差异见 git 历史（提交作者 dxs1256）。

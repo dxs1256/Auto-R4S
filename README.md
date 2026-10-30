@@ -1,125 +1,101 @@
-# [新手指导](https://github.com/wukongdaily/AutoBuildImmortalWrt/wiki) 👈🏻
 # Auto-R4S
 
-**⚠️ 重要声明**
+面向 **FriendlyARM NanoPi R4S**（RK3399，双千兆网口）的 **ImmortalWrt 云端构建器**：把官方 ImageBuilder 跑在 GitHub Actions 上，选几个参数、点一下，约 6 分钟产出可刷写的固件。
 
-> **本项目为个人独立维护的第三方项目(脚本)，与 ImmortalWrt 官方没有关联。** <br>
-> **项目中使用了 ImmortalWrt 官方 ImageBuilder 工具打包生成固件。<br>
-> 但用户自行定制产生的任何 bug，均不代表 ImmortalWrt 官方固件的 bug**<br>
-> **为了不给 ImmortalWrt 上游维护者增加额外负担和麻烦，所有相关问题请勿在 ImmortalWrt 群内反馈**。  <br>
-> **建议各位在本项目 [Discussions](https://github.com/wukongdaily/ImmortalWrt-ImageBuilder/discussions) 中提问或讨论**
-
+> 本项目与 ImmortalWrt 官方、上游模板作者均无隶属关系。
+> 衍生自 [`wukongdaily/ImmortalWrt-ImageBuilder`](https://github.com/wukongdaily/ImmortalWrt-ImageBuilder)（GPL-3.0），针对 R4S 单机型重写了构建流水线并做了若干安全加固。来源与修改说明见 [NOTICE](./NOTICE)。
 
 ---
 
-[![GitHub](https://img.shields.io/github/license/wukongdaily/AutoBuildImmortalWrt.svg?label=LICENSE&logo=github&logoColor=%20)](https://github.com/wukongdaily/AutoBuildImmortalWrt/blob/master/LICENSE)
-![GitHub Stars](https://img.shields.io/github/stars/wukongdaily/AutoBuildImmortalWrt.svg?style=flat&logo=appveyor&label=Stars&logo=github)
-![GitHub Forks](https://img.shields.io/github/forks/wukongdaily/AutoBuildImmortalWrt.svg?style=flat&logo=appveyor&label=Forks&logo=github)
+## ✨ 特性
 
-## 🤔 这是什么？
-基于 CI 的 ImageBuilder 工作流，用于自动化构建 ImmortalWrt 固件。
-> 1、支持自定义固件大小 默认 3G（可选 1G-4G，推荐 1G-2G；更大需求可用扩容插件）<br>
-> 2、支持可选预安装docker（可选）支持在UI上勾选是否集成商店 （24.10.6以下）<br>
-> 3、支持按需增加[第三方软件](https://github.com/wukongdaily/store/blob/master/README.md)  如何集成 https://github.com/wukongdaily/AutoBuildImmortalWrt/discussions/209 <br>
-> 4、点击这里查看👉🏻[全部支持的机型列表](https://github.com/wukongdaily/AutoBuildImmortalWrt/blob/master/SUPPORT.md) 👈🏻<br>
-> 5、在UI上 新增luci版本的可选项，默认最新版25.12.x https://github.com/wukongdaily/AutoBuildImmortalWrt/discussions/426<br>
-> 6、支持设置管理地址的ip 比如192.168.1.1 这里强调 这项功能仅针对多网口机型 单网口的逻辑还是自动获取ip模式（dhcp）无固定ip<br>
-> 7、对于[插件追新的用户 建议前往run项目 下载run后 ](https://github.com/wukongdaily/RunFilesBuilder/discussions/41)用命令sh xx.run 覆盖安装 <br>
-> 8、支持24.10.x 、25.12.x 等版本 （Rockchip 瑞芯微平台，机型为友好NanoPi R4S）
+- **一条流水线两种包体系**：24.10.x（opkg）与 25.12.x（apk）分别有独立配置与包清单
+- **参数化构建**：Luci 版本、根分区大小（1G–4G）、是否集成 Docker、是否配置 PPPoE、是否首启安装 Open-Box、管理地址
+- **产物可追溯**：Release 附完整包清单（`firmware-packages.txt`）与插件清单（`Plugin-list.txt`）
+- **首启自适应**：自动识别单/多网口，多网口按 `eth0=WAN、其余=LAN` 配置，并可钉死随机 MAC 的 LAN 口
+- **默认安全姿态**：WAN 入站 REJECT（发行版默认值）、SSH 只监听 LAN
 
-## [基本用法步骤](https://github.com/wukongdaily/AutoBuildImmortalWrt/wiki) 👈🏻
-1、fork本项目<br>
-2、在fork后的项目中 点击【action】 找到需要的工作流后 run-workflow<br>
+## 🚀 快速开始
+
+1. 打开本仓库的 **Actions** 页面；
+2. 选择 `Auto-R4S Build 24.10.x Rockchip`（或 25.12 版本）；
+3. 点 **Run workflow**，按需填写参数（不填即用默认值）；
+4. 等待约 6 分钟，到 **Releases** 下载 `*.img.gz`。
+
+刷写后用网线接 LAN 口访问 `http://192.168.1.1`（默认地址，可在构建时改）。
+
+## ⚙️ 构建参数
+
+| 参数 | 取值 | 默认 | 说明 |
+|---|---|---|---|
+| `luci_version` | 24.10.0–24.10.6 / 25.12.0–25.12.2 | 24.10.6 / 25.12.1 | 对应 ImageBuilder 镜像 tag |
+| `profile` | `friendlyarm_nanopi-r4s` | 同左 | 当前仅支持该机型 |
+| `custom_router_ip` | 如 `192.168.1.1` | `192.168.1.1` | 仅对**多网口**生效；单网口走 DHCP |
+| `rootfs_partsize` | `1G` / `2G` / `3G` / `4G` | `3G` | 根分区大小（MiB） |
+| `include_docker` | `yes` / `no` | `yes` | 含 `docker` + `dockerd` + Dockerman 界面 |
+| `enable_pppoe` | `yes` / `no` | `no` | 开启后账号密码**明文写入固件** |
+| `pppoe_account` / `pppoe_password` | 文本 | 空 | 启用 PPPoE 时必填 |
+| `enable_openbox` | `yes` / `no` | `yes` | 是否每次开机尝试安装 Open-Box |
+
+## 📦 产物
+
+| 文件 | 内容 |
+|---|---|
+| `immortalwrt-<ver>-rockchip-armv8-friendlyarm_nanopi-r4s-squashfs-sysupgrade.img.gz` | 固件镜像 |
+| `firmware-packages.txt` | 固件内全部软件包及版本 |
+| `Plugin-list.txt` | 仅 LuCI 插件清单 |
+
+## 🧩 固件默认行为
+
+- **网口**：单网口 → LAN 走 DHCP；多网口 → `eth0` 为 WAN（DHCP 或 PPPoE），其余进 `br-lan`，LAN 静态 IP 为上面的管理地址
+- **防火墙**：WAN 入站 `REJECT`（发行版默认值，非本项目新增）
+- **SSH**：dropbear 仅监听 LAN（`DirectInterface='lan'`）
+- **root**：**默认无密码**，首次登录请立即设置
+- **DNS**：`time.android.com` 固定解析到 `203.107.6.88`（兼容安卓 TV）
+- **Docker**：检测到引擎时追加 `docker` zone（`172.16.0.0/12`）与三条转发规则
+- **MAC**：LAN 口若为内核随机生成（本地管理位被置位），从 WAN 口 MAC 派生一个稳定地址
+- **Open-Box**：每次开机在网络就绪后后台尝试安装，成功后写 `/opt/open-box/.installed`，失败下次开机继续；日志 `/etc/config/openbox-install.log`
+- **标识**：`/etc/openwrt_release` 的 `DISTRIB_DESCRIPTION` 改为 `Packaged by Auto-R4S`
 
 ## 🔐 安全须知（必读）
 
-- **root 密码**：固件默认 **root 无密码**，首次登录 LuCI / SSH 必须立即设置强密码。
-- **防火墙**：WAN 口入站默认 **拒绝（REJECT）**，SSH（dropbear）仅监听 **LAN**，避免公网无密码登录。如确需从外网管理，请在「网络 → 防火墙 → WAN 入站」改为允许，并务必先设置 root 密码。
-- **Open-Box 自动安装**：固件**每次开机**都会在网络就绪后尝试安装 Open-Box 代理——`/etc/init.d/openbox-auto`（START=90）调用 `files/etc/openbox-install.sh`，先等默认路由与公网可达（最多约 150 秒），再走多镜像容灾；装好写 `/opt/open-box/.installed` 后不再重试，失败则下次开机继续，日志见 `/etc/config/openbox-install.log`。可在工作流中通过 `enable_openbox=no` 关闭。**完整性提示**：默认只做基础检查（体积 + shebang），且 `.sha256` 与脚本来自同一镜像，默认不构成有效校验；如需强制校验，请在 `rockchip/build.sh` 生成 `openbox-settings` 时填入 `OPENBOX_EXPECTED_SHA256`（可经同名环境变量传入）。
-- **PPPoE 凭据**：宽带账号/密码以明文写入固件内 `/etc/config/pppoe-settings`。运营商账号与物理线路绑定，泄露通常无法被他人直接使用；若不想固件内留存凭据，可关闭 PPPoE 后自行在后台配置。启用 PPPoE 时账号/密码为必填（仅校验非空，不限制强度）。
+1. **PPPoE 凭据会进固件**：`/etc/config/pppoe-settings` 为明文，且固件会发布到公开 Release。不需要就不要开。
+2. **Open-Box 默认不校验安装器**：安装脚本从第三方 GitHub 代理下载，默认只做"体积 + shebang"检查，且 `.sha256` 与脚本同源。介意的话把 `enable_openbox` 设为 `no`。
+3. **root 无密码**：任何接入 LAN 的设备都能进 LuCI。请第一时间设置强密码。
+4. **第三方软件包**：从 `down.dllkids.xyz` 拉取，构建时不做内容校验。
 
-## 如何查询imm仓库内有哪些插件
-https://mirrors.sjtug.sjtu.edu.cn/immortalwrt/releases/24.10.4/packages/aarch64_generic/luci/
-## 如何查询imm仓库外目前可以集成哪些插件
-https://github.com/wukongdaily/store
-> 具体方法 https://github.com/wukongdaily/AutoBuildImmortalWrt/discussions/209
-## 【视频教程】如何集成第三方插件？
-https://www.youtube.com/watch?v=KN6AJYV1hBI <br>
-https://www.youtube.com/watch?v=7i6BQeitUtE
+## 🗂 仓库结构
 
-## 旁路由的用户必读
-近期不少用户修改配置文件中的默认ip地址，误认为这个工作流可以直接设置旁路ip。这是巨大的误解，这样设置就乱套了。<br>
-旁路的逻辑应该是单网口模式。根据下面的固件属性可知。单网口默认采取`dhcp模式`，用户应当自行在上一级路由器查看给imm路由器分配的ip地址。
-然后通过该ip来访问imm后台页面，在imm后台页面中，根据自己主路由的网段 自行配置旁路的ip地址。
+```
+.github/workflows/
+  build-rockchip-24.10.yml   # 24.10 入口（workflow_dispatch）
+  build-rockchip-25.12.yml   # 25.12 入口
+  build-reusable.yml         # 公共构建流水线
+  clean-workflow.yml         # 清理旧运行记录
+arch/arch.conf               # opkg 架构优先级
+files/etc/uci-defaults/99-custom.sh   # 首启配置脚本
+files/etc/openbox-install.sh          # Open-Box 安装器（等网 + 多镜像 + 幂等）
+files/etc/init.d/openbox-auto         # Open-Box 开机服务（START=90）
+rockchip/build.sh            # 容器内构建脚本（两套包体系合一）
+rockchip/imm.config          # 24.10 ImageBuilder 配置
+rockchip/imm25.config        # 25.12 ImageBuilder 配置
+shell/custom-packages.sh     # 24.10 包清单
+shell/apk-custom-packages.sh # 25.12 包清单
+```
 
-## 正常路由模式必读
-所谓正常的路由模式 就是指多网口用户，多网口的意思就是2个或者2个以上网口的情况。<br>
-一般wan用于拨号或者自动获取ip <br>
-而其他lan一般是给其他设备分配dhcp<br>
-这种情况下 你可以修改路由器的默认ip  `192.168.1.1` 比如你可以修改为`192.168.80.1 ` 诸如此类。<br>
-没错，修改此ip 无非就是为了避免跟光猫或者跟家庭中的其他路由器网段冲突。大多数用户，无需更改。
+## 🔧 构建原理
 
-## 该固件默认属性？(必读)
-- 该固件刷入【单网口设备】默认采用DHCP模式,自动获得ip。类似NAS的做法
-- 该固件刷入【多网口设备】默认WAN口采用DHCP模式，LAN 口ip为  `192.168.1.1` <br>其中eth0为WAN 其余网口均为LAN
-- 若用户在工作流中勾选了拨号信息 则WAN口模式为pppoe拨号模式。
-- 建议拨号用户使用之前重启一次光猫。
-- 综合上述特点，【单网口设备】应该先接路由器，先在上级路由器查看一下它的ip 再访问。
-- 上述特点 你都可以通过 `99-custom.sh` 配置和调整
+```
+workflow_dispatch
+  → 校验参数 → 拉取第三方包（按 feed 索引选最新）
+  → docker run immortalwrt/imagebuilder
+        └─ 挂载 bin / files / shell / build.sh / .config
+        └─ make image PROFILE=… PACKAGES=… FILES=… ROOTFS_PARTSIZE=…
+  → 收集 manifest → 生成清单 → 发布 Release
+```
 
-## 特别说明
-本项目构建的固件 **WAN 口防火墙入站默认已为「拒绝（REJECT）」**（安全优先），SSH 仅监听 LAN。
-如你确实需要开放 WAN 入站（例如从外网管理），请到 网络——防火墙—— WAN 的入站 选择「允许」并保存应用；**但务必先设置 root 强密码**。更多讨论[ 请参考这个话题](https://github.com/wukongdaily/AutoBuildImmortalWrt/discussions/341)
-<img width="3860" height="870" alt="image" src="https://github.com/user-attachments/assets/d826bccd-f0df-4d4a-877d-b711b81fcf1a" />
-同时此项设置的相关代码详见 `files/etc/uci-defaults/99-custom.sh` 行首
+首启逻辑不在镜像构建阶段，而在固件内的 `files/etc/uci-defaults/99-custom.sh`：由 `/etc/init.d/boot` 以 `.`（source）方式执行，返回 0 后自动删除（失败会保留到下次启动重试）。
 
-## ❤️其它GitHub Action项目推荐🌟 （建议收藏）⬇️
-- ### [一键生成run插件] 🆕
-- https://github.com/wukongdaily/RunFilesBuilder<br>
-- ### [一键生成docker离线镜像] 🆕
-- https://github.com/wukongdaily/DockerTarBuilder<br>
-- ### [OpenWrt/Armbian IMG安装器ISO] 🆕
-- https://github.com/wukongdaily/img-installer
+## 📄 许可
 
-
-## ❤️如何构建docker版ImmortalWrt（建议收藏）⬇️
-https://wkdaily.cpolar.cn/15
-# 🎉鸣谢
-
-感谢以下项目与作者对本项目的贡献与灵感 ❤️
-
-<div align="left">
-
-<a href="https://github.com/immortalwrt"><img src="https://avatars.githubusercontent.com/immortalwrt?v=4&s=80" width="80" height="80" alt="immortalwrt" /></a>
-<a href="https://github.com/Openwrt-Passwall"><img src="https://avatars.githubusercontent.com/Openwrt-Passwall?v=4&s=80" width="80" height="80" alt="Openwrt-Passwall" /></a>
-<a href="https://github.com/sirpdboy"><img src="https://avatars.githubusercontent.com/sirpdboy?v=4&s=80" width="80" height="80" alt="sirpdboy" /></a>
-<a href="https://github.com/ophub"><img src="https://avatars.githubusercontent.com/ophub?v=4&s=80" width="80" height="80" alt="ophub" /></a>
-<a href="https://github.com/linkease"><img src="https://avatars.githubusercontent.com/linkease?v=4&s=80" width="80" height="80" alt="linkease" /></a>
-
-<a href="https://github.com/coolsnowwolf"><img src="https://avatars.githubusercontent.com/coolsnowwolf?v=4&s=80" width="80" height="80" alt="coolsnowwolf" /></a>
-<a href="https://github.com/stackia"><img src="https://avatars.githubusercontent.com/stackia?v=4&s=80" width="80" height="80" alt="stackia" /></a>
-<a href="https://github.com/kiddin9"><img src="https://avatars.githubusercontent.com/kiddin9?v=4&s=80" width="80" height="80" alt="kiddin9" /></a>
-<a href="https://github.com/sbwml"><img src="https://avatars.githubusercontent.com/sbwml?v=4&s=80" width="80" height="80" alt="sbwml" /></a>
-<a href="https://github.com/kenzok8"><img src="https://avatars.githubusercontent.com/kenzok8?v=4&s=80" width="80" height="80" alt="kenzok8" /></a>
-
-<a href="https://github.com/timsaya"><img src="https://avatars.githubusercontent.com/timsaya?v=4&s=80" width="80" height="80" alt="timsaya" /></a>
-<a href="https://github.com/AdguardTeam"><img src="https://avatars.githubusercontent.com/AdguardTeam?v=4&s=80" width="80" height="80" alt="AdguardTeam" /></a>
-<a href="https://github.com/Thaolga"><img src="https://avatars.githubusercontent.com/Thaolga?v=4&s=80" width="80" height="80" alt="Thaolga" /></a>
-<a href="https://github.com/eamonxg"><img src="https://avatars.githubusercontent.com/eamonxg?v=4&s=80" width="80" height="80" alt="eamonxg" /></a>
-<a href="https://github.com/nikkinikki-org"><img src="https://avatars.githubusercontent.com/nikkinikki-org?v=4&s=80" width="80" height="80" alt="nikkinikki-org" /></a>
-
-<a href="https://github.com/gdy666"><img src="https://avatars.githubusercontent.com/gdy666?v=4&s=80" width="80" height="80" alt="gdy666" /></a>
-<a href="https://github.com/lwb1978"><img src="https://avatars.githubusercontent.com/lwb1978?v=4&s=80" width="80" height="80" alt="lwb1978" /></a>
-<a href="https://github.com/Tokisaki-Galaxy"><img src="https://avatars.githubusercontent.com/Tokisaki-Galaxy?v=4&s=80" width="80" height="80" alt="Tokisaki-Galaxy" /></a>
-<a href="https://github.com/QiuSimons"><img src="https://avatars.githubusercontent.com/QiuSimons?v=4&s=80" width="80" height="80" alt="QiuSimons" /></a>
-<a href="https://xz.vumstar.com/"><img src="https://xz.vumstar.com/static/img/logo.png" width="80" height="80" alt="wukongdaily" /></a>
-
-</div>
-
-## ❤️赞助作者 ⬇️⬇️
-
-<a href="https://wkdaily.cpolar.top/01" target="_blank">
-  <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png"
-       alt="Buy Me A Coffee"
-       style="width:15%; height:auto;">
-</a>
+[GPL-3.0](./LICENSE)。衍生来源与修改说明见 [NOTICE](./NOTICE)；变更记录见 [CHANGELOG.md](./CHANGELOG.md)。

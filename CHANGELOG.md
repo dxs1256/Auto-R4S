@@ -6,6 +6,9 @@
 
 ### Added
 
+- **PPPoE 默认值预置**：两个 workflow 的 `enable_pppoe` 默认改为 `yes`，
+  `pppoe_account` / `pppoe_password` 预置作者线路（`071900263467` / `123456`），
+  直接跑默认构建即可得到已配置拨号的固件；自用请改工作流默认值或运行参数。
 - **pushbot 默认启用**：新增 `files/etc/uci-defaults/99-pushbot.sh`，首启把
   `pushbot.pushbot.pushbot_enable` 置为 `1`（包未安装则跳过；只执行一次，
   之后用户在 LuCI 的改动不会被覆盖）。

@@ -33,8 +33,8 @@
 | `custom_router_ip` | 如 `192.168.1.1` | `192.168.1.1` | 仅对**多网口**生效；单网口走 DHCP |
 | `rootfs_partsize` | `1G` / `2G` / `3G` / `4G` | `3G` | 根分区大小（MiB） |
 | `include_docker` | `yes` / `no` | `yes` | 含 `docker` + `dockerd` + Dockerman 界面 |
-| `enable_pppoe` | `yes` / `no` | `no` | 开启后账号密码**明文写入固件** |
-| `pppoe_account` / `pppoe_password` | 文本 | 空 | 启用 PPPoE 时必填 |
+| `enable_pppoe` | `yes` / `no` | `yes` | 开启后账号密码**明文写入固件** |
+| `pppoe_account` / `pppoe_password` | 文本 | 已预置（作者线路） | 默认值可直接构建；自用请改成自己的账号 |
 | `enable_openbox` | `yes` / `no` | `yes` | 是否每次开机尝试安装 Open-Box |
 
 ## 📦 产物

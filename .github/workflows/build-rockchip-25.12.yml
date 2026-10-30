@@ -48,19 +48,19 @@ on:
       enable_pppoe:
         description: "是否配置 PPPoE 拨号"
         required: true
-        default: 'no'
+        default: 'yes'
         type: choice
         options:
           - 'yes'
           - 'no'
       pppoe_account:
-        description: "宽带账号（启用 PPPoE 时必填）"
+        description: "宽带账号（默认已预置作者线路，可改）"
         required: false
-        default: ""
+        default: '071900263467'
       pppoe_password:
-        description: "宽带密码（启用 PPPoE 时必填）"
+        description: "宽带密码（默认已预置作者线路，可改）"
         required: false
-        default: ""
+        default: '123456'
       enable_openbox:
         description: "首启是否自动安装 Open-Box 代理"
         required: true

@@ -4,6 +4,13 @@
 
 ## 2026-10-30
 
+### Removed
+
+- **不再集成 Aria2**：`shell/custom-packages.sh` 中 `luci-i18n-aria2-zh-cn` 注释停用，
+  连带 `luci-app-aria2` / `aria2` / `ariang` 一并移出固件。
+- **不再集成 CPU 频率插件**：`rockchip/build.sh` 增加 `-luci-app-cpufreq`
+  （该包由目标默认包带入，ImageBuilder 用 `-pkg` 语法从镜像中移除）。
+
 ### Added
 
 - **PPPoE 默认值预置**：两个 workflow 的 `enable_pppoe` 默认改为 `yes`，

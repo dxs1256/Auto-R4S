@@ -99,6 +99,10 @@ if [ "$INCLUDE_DOCKER" = "yes" ]; then
   echo "Adding docker packages"
 fi
 
+# 明确排除用不到的插件（ImageBuilder 支持 "-pkg" 语法，从最终镜像里移除）
+# luci-app-cpufreq：目标默认包带入，用不上
+PACKAGES="$PACKAGES -luci-app-cpufreq"
+
 # 合并第三方插件
 PACKAGES="$PACKAGES $CUSTOM_PACKAGES"
 

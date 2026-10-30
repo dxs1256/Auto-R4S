@@ -118,31 +118,86 @@ elif [ "$count" -gt 1 ]; then
         uci set network.wan.password="$pppoe_password"
         uci set network.wan.peerdns='1'
         uci set network.wan.auto='1'
-        uci set network.wan6.proto='none'
+        # 拨号失败后等待 holdoff 秒再重连，避免每 3 秒一次的疯狂重拨放大对局端 RADIUS 的冲击
+        uci set network.wan.holdoff='10'
+        # 禁用独立的 IPv6 拨号接口。
+        # 注意：ImageBuilder 默认生成的 IPv6 接口名是 wan_6（带下划线），旧写法
+        # network.wan6 命不中任何配置，导致 PPPoE 模式下 wan_6 仍独立拉起 dhcpv6。
+        for _ipv6if in wan_6 wan6; do
+            if uci show "network.${_ipv6if}" >/dev/null 2>&1; then
+                uci set network.${_ipv6if}.proto='none'
+                echo "PPPoE: disabled IPv6 iface ${_ipv6if}" >>$LOGFILE
+            fi
+        done
         echo "PPPoE config done." >>$LOGFILE
     else
         echo "PPPoE not enabled." >>$LOGFILE
+    fi
+
+    # ============ 固定 LAN 物理口 MAC（可选增强） ============
+    # R4S 的 PCIe RTL8168/8111 网卡无 EEPROM，内核每次启动随机生成 MAC
+    #（日志: r8169 ... can't read MAC address, setting random one）。
+    # 从 WAN(eth0, 板载 GMAC 稳定 MAC) 派生一个 LAN MAC：
+    #   置本地管理位(0x02) + 末字节+1，永久固定且不与本机其他口冲突。
+    # 仅当 LAN 口当前 MAC 命中"随机生成"特征（本地管理位被置位）时才执行。
+    lan_phy=""
+    for _i in $lan_ifnames; do
+        lan_phy="$_i"
+        break
+    done
+    if [ -n "$lan_phy" ]; then
+        wan_mac=$(cat "/sys/class/net/$wan_ifname/address" 2>/dev/null)
+        lan_mac=$(cat "/sys/class/net/$lan_phy/address" 2>/dev/null)
+        lan_b1=$(printf '%d' "0x${lan_mac%%:*}" 2>/dev/null)
+        if [ -n "$lan_b1" ] && [ $((lan_b1 & 0x02)) -ne 0 ] && [ $((lan_b1 & 0x01)) -eq 0 ] && \
+           echo "$wan_mac" | grep -qE '^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$' && \
+           [ "$wan_mac" != "00:00:00:00:00:00" ] && [ "$wan_mac" != "ff:ff:ff:ff:ff:ff" ]; then
+            # 本地管理位已置位 => 是内核随机生成的 MAC，需要钉死
+            o1=$(printf '%d' "0x${wan_mac%%:*}")
+            o2=$(printf '%d' "0x$(echo "$wan_mac" | cut -d: -f2)")
+            o3=$(printf '%d' "0x$(echo "$wan_mac" | cut -d: -f3)")
+            o4=$(printf '%d' "0x$(echo "$wan_mac" | cut -d: -f4)")
+            o5=$(printf '%d' "0x$(echo "$wan_mac" | cut -d: -f5)")
+            o6=$(printf '%d' "0x${wan_mac##*:}")
+            o1=$(( (o1 | 0x02) & 0xfe ))
+            o6=$(( (o6 + 1) & 0xff ))
+            new_mac=$(printf '%02x:%02x:%02x:%02x:%02x:%02x' "$o1" "$o2" "$o3" "$o4" "$o5" "$o6")
+            # 持久化：找到该物理设备已有的 device section 则改 macaddr，否则新建
+            devsec=$(uci show network | grep -E "^network\.[^.=]+\.name='${lan_phy}'$" | head -n1 | cut -d. -f2)
+            if [ -n "$devsec" ]; then
+                uci set network.$devsec.macaddr="$new_mac"
+            else
+                uci set network.lan_phy=device
+                uci set network.lan_phy.name="$lan_phy"
+                uci set network.lan_phy.macaddr="$new_mac"
+            fi
+            echo "LAN MAC pinned: $lan_phy $lan_mac -> $new_mac (derived from $wan_ifname $wan_mac)" >>$LOGFILE
+        fi
     fi
 
     uci commit network
 fi
 
 # 仅允许从 LAN 访问 SSH，避免 WAN 无密码登录（如需外网 SSH，请改为 'wan' 并先设 root 密码）
-uci set dropbear.@dropbear[0].Interface='lan'
+# 24.10 的 dropbear：option Interface 会先解析接口 IP 再绑定，br-lan 未就绪时报
+# 'Address not available'（日志实锤 16:04:04 首发失败）。改用 DirectInterface
+#（dropbear 2.x -B / SO_BINDTODEVICE 直接绑网络设备，不依赖地址解析），仍保持仅 LAN 可达。
+uci -q delete dropbear.@dropbear[0].Interface
+uci -q delete dropbear.@dropbear[0].DirectInterface
+uci set dropbear.@dropbear[0].DirectInterface='lan'
 uci commit
+
+# 修正 luci-app-dockerman 菜单显示名：immortalwrt 官方 JS 版 menu.d 的 title 原文就叫
+# "Dockerman JS"（非装错包），此处改为用户熟悉的 "Docker"
+if [ -f /usr/share/luci/menu.d/luci-app-dockerman.json ]; then
+    sed -i 's/"title": "Dockerman JS"/"title": "Docker"/' /usr/share/luci/menu.d/luci-app-dockerman.json
+    echo "dockerman menu title fixed" >>$LOGFILE
+fi
 
 # 设置编译作者信息
 FILE_PATH="/etc/openwrt_release"
 NEW_DESCRIPTION="Packaged by Auto-R4S"
 sed -i "s/DISTRIB_DESCRIPTION='[^']*'/DISTRIB_DESCRIPTION='$NEW_DESCRIPTION'/" "$FILE_PATH"
-
-# 若luci-app-advancedplus (进阶设置)已安装 则去除zsh的调用 防止命令行报 /usb/bin/zsh: not found的提示
-if [ -f /usr/lib/lua/luci/controller/advancedplus.lua ]; then
-    sed -i '/\/usr\/bin\/zsh/d' /etc/profile
-    sed -i '/\/bin\/zsh/d' /etc/init.d/advancedplus
-    sed -i '/\/usr\/bin\/zsh/d' /etc/init.d/advancedplus
-    echo "fix ttyd show msg: /usb/bin/zsh: not found" >>$LOGFILE
-fi
 
 # 只有安装了 luci-app-quickfile 才执行
 if [ -f /usr/bin/quickfile ]; then
@@ -214,109 +269,21 @@ else
 fi
 
 
-# ============= Open-Box 自动安装（可开关 + 多镜像容灾 + SHA256 校验） =============
-# 安全设计：
-#  - 由构建时生成的 /etc/config/openbox-settings 控制是否安装（ENABLE_OPENBOX），默认 yes。
-#  - install.sh 下载后做 SHA256 校验：优先用仓库同路径的 install.sh.sha256 校验和；
-#    否则用构建时写入的 OPENBOX_EXPECTED_SHA256；都没有则仅做基础检查并明确告警（仍有供应链风险）。
-#  - 全镜像校验/安装失败则不动 /opt/open-box。
-# 注意：必须先 source 开关配置，再据此计算 install.sh 路径，否则开关/REF 不生效
-OPENBOX_SETTINGS="/etc/config/openbox-settings"
-ENABLE_OPENBOX="yes"
-OPENBOX_REF="main"
-OPENBOX_EXPECTED_SHA256=""
-if [ -f "$OPENBOX_SETTINGS" ]; then
-  . "$OPENBOX_SETTINGS"
+
+# ============= Open-Box 自动安装（每次开机自动执行，替代原"仅首启尝试"方案） =============
+# 背景：原方案在 uci-defaults 阶段执行，此时网络通常未就绪（wan 未拨号/未拿 IP），
+# 且 uci-defaults 只跑一次、跑完即删，导致下载失败后永远不再自动尝试。
+# 方案：独立 init 服务 openbox-auto（START=90，开机网络就绪后执行 /etc/openbox-install.sh；
+# 脚本内含网络等待 + 多镜像容灾 + SHA256 校验；装好后 /opt/open-box/.installed 存在则秒退）。
+if [ -f /etc/init.d/openbox-auto ]; then
+    chmod +x /etc/init.d/openbox-auto
+    /etc/rc.common /etc/init.d/openbox-auto enable
+    echo "Open-Box: 开机自动安装服务 openbox-auto 已启用" >>$LOGFILE
+fi
+# 首启若网络已就绪则立即补装一次（后台，不阻塞首启流程）
+if [ -f /etc/openbox-install.sh ] && [ ! -f /opt/open-box/.installed ]; then
+    sh /etc/openbox-install.sh >/dev/null 2>&1 &
+    echo "Open-Box: 首启后台补装已触发" >>$LOGFILE
 fi
 
-OPENBOX_REPO="liandu2024/Open-Box"
-OPENBOX_INSTALL_SH="$OPENBOX_REF/scripts/install.sh"
-OPENBOX_INSTALLED="/opt/open-box/.installed"
-OPENBOX_TMP="/tmp/open-box-install.sh"
-OPENBOX_SHA_TMP="/tmp/open-box-install.sh.sha256"
-LOGFILE="/etc/config/uci-defaults-log.txt"
-
-# 镜像前缀列表（优先级从高到低）
-OPENBOX_MIRRORS="
-gh-proxy.com
-ghfast.top
-gh.dpik.top
-ghproxy.homeboyc.cn
-"
-
-ob_verify() {
-  f="$1"
-  sz=$(wc -c < "$f" 2>/dev/null || echo 0)
-  [ "$sz" -lt 1000 ] && { echo "Open-Box: install.sh 体积异常($sz)，拒绝执行" >> "$LOGFILE"; return 1; }
-  head -c 100 "$f" | grep -q '^#!.*sh' || { echo "Open-Box: install.sh 头部不是 shell 脚本，拒绝执行" >> "$LOGFILE"; return 1; }
-
-  if [ -s "$OPENBOX_SHA_TMP" ]; then
-    exp=$(cat "$OPENBOX_SHA_TMP" | tr -d '[:space:]' | head -c 64)
-    act=$(sha256sum "$f" | cut -d' ' -f1)
-    if [ "$exp" = "$act" ]; then
-      echo "Open-Box: SHA256 校验通过($act)" >> "$LOGFILE"; return 0
-    fi
-    echo "Open-Box: SHA256 校验失败(期望 $exp 实际 $act)，跳过该镜像" >> "$LOGFILE"; return 1
-  fi
-  if [ -n "$OPENBOX_EXPECTED_SHA256" ]; then
-    act=$(sha256sum "$f" | cut -d' ' -f1)
-    if [ "$OPENBOX_EXPECTED_SHA256" = "$act" ]; then
-      echo "Open-Box: SHA256 校验通过($act)" >> "$LOGFILE"; return 0
-    fi
-    echo "Open-Box: SHA256 校验失败(期望 $OPENBOX_EXPECTED_SHA256 实际 $act)，跳过该镜像" >> "$LOGFILE"; return 1
-  fi
-  echo "Open-Box: ⚠️ 未配置任何 SHA256 校验源，仅做基础检查后执行（存在供应链风险，建议在 openbox-settings 中填入 OPENBOX_EXPECTED_SHA256）" >> "$LOGFILE"
-  return 0
-}
-
-ob_try_install() {
-  m="$1"
-  echo "Open-Box: 尝试通过镜像 $m 下载安装..." >> "$LOGFILE"
-  case "$m" in
-    http://*|https://*) base="$m" ;;
-    *) base="https://$m" ;;
-  esac
-  url="$base/raw.githubusercontent.com/$OPENBOX_REPO/$OPENBOX_INSTALL_SH"
-  curl -fsSL --connect-timeout 8 --max-time 30 "$url" -o "$OPENBOX_TMP" 2>>"$LOGFILE" \
-    || { echo "Open-Box: 镜像 $m 下载 install.sh 失败" >> "$LOGFILE"; return 1; }
-  # 尽力下载官方校验和（可选）
-  curl -fsSL --connect-timeout 8 --max-time 30 "$url.sha256" -o "$OPENBOX_SHA_TMP" 2>>"$LOGFILE" || rm -f "$OPENBOX_SHA_TMP"
-
-  ob_verify "$OPENBOX_TMP" || { rm -f "$OPENBOX_TMP" "$OPENBOX_SHA_TMP"; return 1; }
-
-  chmod +x "$OPENBOX_TMP"
-  sh "$OPENBOX_TMP" --mirror "$m" >> "$LOGFILE" 2>&1
-  rc=$?
-  rm -f "$OPENBOX_TMP" "$OPENBOX_SHA_TMP"
-  if [ $rc -ne 0 ]; then
-    echo "Open-Box: 镜像 $m 安装失败 (rc=$rc)" >> "$LOGFILE"; return 1
-  fi
-  if [ -d "/opt/open-box" ]; then
-    touch "$OPENBOX_INSTALLED"
-    echo "Open-Box: 镜像 $m 安装完成" >> "$LOGFILE"; return 0
-  fi
-  echo "Open-Box: 镜像 $m 执行成功但 /opt/open-box 不存在，视为失败" >> "$LOGFILE"; return 1
-}
-
-case "$ENABLE_OPENBOX" in
-  yes|true|1)
-    if [ -f "$OPENBOX_INSTALLED" ]; then
-      echo "Open-Box 已安装，跳过" >> "$LOGFILE"
-    else
-      echo "检测到 Open-Box 未安装，开始自动安装（多镜像容灾 + 校验）..." >> "$LOGFILE"
-      ok=0
-      for m in $OPENBOX_MIRRORS; do
-        echo "Open-Box: 探测镜像 $m ..." >> "$LOGFILE"
-        if ob_try_install "$m"; then ok=1; break; fi
-      done
-      if [ "$ok" -eq 0 ]; then
-        echo "Open-Box: 所有内置镜像均不可用或校验/安装失败" >> "$LOGFILE"
-        echo "Open-Box: 可手动下载 install.sh 安装，或把可用镜像前缀加入 OPENBOX_MIRRORS" >> "$LOGFILE"
-      fi
-    fi
-    ;;
-  *)
-    echo "Open-Box 自动安装已关闭（ENABLE_OPENBOX=$ENABLE_OPENBOX）" >> "$LOGFILE"
-    ;;
-esac
 exit 0

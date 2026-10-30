@@ -1,0 +1,13 @@
+#!/bin/sh /etc/rc.common
+# Open-Box 自动补装服务
+# 每次开机（网络就绪后，START=90）自动执行 /etc/openbox-install.sh；
+# 已安装（/opt/open-box/.installed 存在）则秒退。由 99-custom.sh 首启时 enable。
+START=90
+USE_PROCD=0
+
+start() {
+    [ -x /etc/openbox-install.sh ] || return 0
+    [ -f /opt/open-box/.installed ] && return 0
+    /etc/openbox-install.sh >/dev/null 2>&1 &
+    return 0
+}

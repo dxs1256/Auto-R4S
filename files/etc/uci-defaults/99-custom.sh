@@ -120,15 +120,6 @@ elif [ "$count" -gt 1 ]; then
         uci set network.wan.auto='1'
         # 拨号失败后等待 holdoff 秒再重连，避免每 3 秒一次的疯狂重拨放大对局端 RADIUS 的冲击
         uci set network.wan.holdoff='10'
-        # 禁用独立的 IPv6 拨号接口。
-        # 注意：ImageBuilder 默认生成的 IPv6 接口名是 wan_6（带下划线），旧写法
-        # network.wan6 命不中任何配置，导致 PPPoE 模式下 wan_6 仍独立拉起 dhcpv6。
-        for _ipv6if in wan_6 wan6; do
-            if uci show "network.${_ipv6if}" >/dev/null 2>&1; then
-                uci set network.${_ipv6if}.proto='none'
-                echo "PPPoE: disabled IPv6 iface ${_ipv6if}" >>$LOGFILE
-            fi
-        done
         echo "PPPoE config done." >>$LOGFILE
     else
         echo "PPPoE not enabled." >>$LOGFILE
@@ -182,6 +173,22 @@ elif [ "$count" -gt 1 ]; then
 
     uci commit network
 fi
+
+# ============ 彻底关闭 IPv6 ============
+# 为什么不能只改 wan6：PPPoE 的 IPv6 子接口 wan_6 是协议层在 wan.ipv6=1 时动态创建的，
+# 把静态 wan6 设成 proto=none 并不能阻止它（实测 25.12.2 上仍有全球地址、/60 PD、
+# wan_6 反复 up/down）。真正关掉需要把 wan 的 ipv6 开关置 0，并停掉 LAN 侧的
+# RA / DHCPv6 / NDP，否则客户端仍会被通告 IPv6 前缀。
+if uci -q get network.wan >/dev/null 2>&1; then
+    uci set network.wan.ipv6='0'
+fi
+uci -q delete network.wan6
+uci set dhcp.lan.ra='disabled'
+uci set dhcp.lan.dhcpv6='disabled'
+uci set dhcp.lan.ndp='disabled'
+uci commit network
+uci commit dhcp
+echo "IPv6: disabled (wan.ipv6=0, ra/dhcpv6/ndp disabled)" >>$LOGFILE
 
 # 仅允许从 LAN 访问 SSH，避免 WAN 无密码登录（如需外网 SSH，请改为 'wan' 并先设 root 密码）
 # 24.10 的 dropbear：option Interface 会先解析接口 IP 再绑定，br-lan 未就绪时报

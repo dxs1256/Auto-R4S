@@ -57,6 +57,10 @@
 - **Open-Box**：每次开机在网络就绪后后台尝试安装，成功后写 `/opt/open-box/.installed`，失败下次开机继续；日志 `/etc/config/openbox-install.log`
   - 数据面为 **TUN 模式**（`openbox-tun` + nft 旁路），**不需要** `kmod-nft-tproxy` / `kmod-nft-socket`；`kmod-tun`、`kmod-nft-queue`、`ip-full` 由安装器在首次安装时自行 `apk add` 补齐
 - **pushbot**：镜像内**默认启用**（首启写入 `pushbot_enable=1`），不需要可在 LuCI「服务 → PushBot」关闭；不装 `wrtbwmon` / `nlbwmon` 时流量统计模块不可用，其余推送正常
+- **IPv6**：默认**关闭**——`network.wan.ipv6='0'`，并停用 LAN 侧的 `ra` / `dhcpv6` / `ndp`。
+  原因：PPPoE 的动态 `wan_6` 是协议层在 `wan.ipv6=1` 时自动创建的，单改 `wan6.proto='none'` 拦不住它
+  （实测仍有全球地址、/60 PD、`wan_6` 反复 up/down）。需要 IPv6 时把这段改回 `wan.ipv6='1'` 并恢复
+  `dhcp.lan.ra/dhcpv6` 即可。
 - **标识**：`/etc/openwrt_release` 的 `DISTRIB_DESCRIPTION` 改为 `Packaged by Auto-R4S`
 
 ## 🔐 安全须知（必读）

@@ -4,6 +4,13 @@
 
 ## 2026-10-30
 
+### Changed
+
+- **IPv6 默认关闭**：`99-custom.sh` 新增独立段落，`network.wan.ipv6='0'`、删除静态 `wan6`，
+  并停用 `dhcp.lan` 的 `ra` / `dhcpv6` / `ndp`。原先把 `wan6.proto` 设 `none` 的做法对
+  PPPoE 动态创建的 `wan_6` 无效（真机实测：仍拿到全球地址与 /60 PD，且 `wan_6` 反复 up/down）。
+  真机验证：关闭后 `pppoe-wan` 无全球 IPv6、无 IPv6 默认路由，IPv4 拨号与外网正常。
+
 ### Removed
 
 - **不再集成 Aria2**：`shell/custom-packages.sh` 中 `luci-i18n-aria2-zh-cn` 注释停用，

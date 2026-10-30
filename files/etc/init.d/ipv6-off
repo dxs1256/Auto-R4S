@@ -1,0 +1,28 @@
+#!/bin/sh /etc/rc.common
+# 每次开机兜底关闭 IPv6
+#
+# 背景：首启 uci-defaults（99-custom.sh）里已经设过 wan.ipv6=0 与 dhcp.lan 的
+# ra/dhcpv6/ndp=disabled，但实测 24.10.6 首启后 dhcp.lan 的值又变回 server
+# （后续启动环节覆盖了它）。这里在网络与 odhcpd 起来之后（START=98）再强制一次，
+# 保证每次开机 IPv6 都是关的。
+#
+# 注意：这是传统 init 脚本，必须【不设置】USE_PROCD —— rc.common 用
+# [ -n "$USE_PROCD" ] 判定，写成 0 也会走 procd 分支并覆盖下面的 start()。
+START=98
+STOP=10
+
+changed=0
+
+start() {
+    [ "$(uci -q get network.wan.ipv6)" = "0" ] || { uci set network.wan.ipv6='0'; changed=1; }
+    [ "$(uci -q get dhcp.lan.ra)" = "disabled" ] || { uci set dhcp.lan.ra='disabled'; changed=1; }
+    [ "$(uci -q get dhcp.lan.dhcpv6)" = "disabled" ] || { uci set dhcp.lan.dhcpv6='disabled'; changed=1; }
+    [ "$(uci -q get dhcp.lan.ndp)" = "disabled" ] || { uci set dhcp.lan.ndp='disabled'; changed=1; }
+
+    if [ "$changed" = "1" ]; then
+        uci commit network
+        uci commit dhcp
+        /etc/init.d/odhcpd restart >/dev/null 2>&1
+    fi
+    return 0
+}

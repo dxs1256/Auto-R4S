@@ -292,6 +292,16 @@ if [ -f /etc/init.d/openbox-auto ]; then
     /etc/rc.common /etc/init.d/openbox-auto enable
     echo "Open-Box: 开机自动安装服务 openbox-auto 已启用" >>$LOGFILE
 fi
+# ============= IPv6 兜底服务 =============
+# 首启在本脚本里设过 wan.ipv6=0 与 dhcp.lan 的 ra/dhcpv6/ndp=disabled，但实测 24.10.6
+# 首启后 dhcp.lan 会被后续环节改回 server。ipv6-off 在网络/odhcpd 起来之后（START=98）
+# 每次开机再强制一次。
+if [ -f /etc/init.d/ipv6-off ]; then
+    chmod +x /etc/init.d/ipv6-off
+    /etc/rc.common /etc/init.d/ipv6-off enable
+    echo "IPv6: 兜底服务 ipv6-off 已启用" >>$LOGFILE
+fi
+
 # 首启若网络已就绪则立即补装一次（后台，不阻塞首启流程）
 if [ -f /etc/openbox-install.sh ] && [ ! -f /opt/open-box/.installed ]; then
     sh /etc/openbox-install.sh >/dev/null 2>&1 &

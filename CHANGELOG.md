@@ -4,6 +4,16 @@
 
 ## 2026-10-30
 
+### Fixed
+
+- **IPv6 首启设置被覆盖**：新增 `files/etc/init.d/ipv6-off`（START=98），每次开机在网络与
+  odhcpd 起来后强制 `wan.ipv6=0` 与 `dhcp.lan.ra/dhcpv6/ndp=disabled`。真机实测 24.10.6
+  首启后 `dhcp.lan` 会被后续环节改回 `server`，只靠 uci-defaults 不够。
+- **Docker 拉镜像超时**：新增 `files/etc/uci-defaults/99-docker-mirror.sh`，首启为 dockerd
+  增加 `https://docker.m.daocloud.io` 镜像加速。实测 `registry-1.docker.io` 在国内容器网络
+  下 8 秒超时；加镜像后 `docker run hello-world` 成功（dockerd 在 24.10 上 overlay2 挂载失败
+  会自动回落到 `vfs`，可用但占空间）。
+
 ### Changed
 
 - **Release 命名改为时间在前**：`tag_name` 从 `Autobuild-<系列>-<时间>` 改为

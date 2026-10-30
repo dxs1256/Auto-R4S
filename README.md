@@ -55,6 +55,8 @@
 - **Docker**：检测到引擎时追加 `docker` zone（`172.16.0.0/12`）与三条转发规则
 - **MAC**：LAN 口若为内核随机生成（本地管理位被置位），从 WAN 口 MAC 派生一个稳定地址
 - **Open-Box**：每次开机在网络就绪后后台尝试安装，成功后写 `/opt/open-box/.installed`，失败下次开机继续；日志 `/etc/config/openbox-install.log`
+  - 数据面为 **TUN 模式**（`openbox-tun` + nft 旁路），**不需要** `kmod-nft-tproxy` / `kmod-nft-socket`；`kmod-tun`、`kmod-nft-queue`、`ip-full` 由安装器在首次安装时自行 `apk add` 补齐
+- **pushbot**：镜像内**默认启用**（首启写入 `pushbot_enable=1`），不需要可在 LuCI「服务 → PushBot」关闭；不装 `wrtbwmon` / `nlbwmon` 时流量统计模块不可用，其余推送正常
 - **标识**：`/etc/openwrt_release` 的 `DISTRIB_DESCRIPTION` 改为 `Packaged by Auto-R4S`
 
 ## 🔐 安全须知（必读）

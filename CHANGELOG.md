@@ -4,6 +4,20 @@
 
 ## 2026-10-30
 
+### Added
+
+- **pushbot 默认启用**：新增 `files/etc/uci-defaults/99-pushbot.sh`，首启把
+  `pushbot.pushbot.pushbot_enable` 置为 `1`（包未安装则跳过；只执行一次，
+  之后用户在 LuCI 的改动不会被覆盖）。
+
+### Docs
+
+- README 更正 **Open-Box 数据面为 TUN 模式**（`openbox-tun` + nft 旁路），
+  明确**不需要** `kmod-nft-tproxy` / `kmod-nft-socket`；`kmod-tun`、`kmod-nft-queue`、
+  `ip-full` 由 Open-Box 安装器首次安装时自行 `apk add` 补齐。
+  （依据 NanoPi R4S + ImmortalWrt 25.12.2 真机验证：运行配置仅含 `tun` inbound，
+  `nft list table inet openbox` 中 tproxy 规则为 0，两个模块引用计数为 0。）
+
 ### Changed
 
 - **独立为自有项目**：迁移到独立仓库（原 fork 关系不再保留），重写 README，

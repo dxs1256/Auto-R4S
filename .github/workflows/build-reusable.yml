@@ -209,8 +209,10 @@ jobs:
       - name: Upload release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # softprops/action-gh-release v3.0.3
         with:
-          tag_name: Autobuild-${{ inputs.image_tag_suffix }}-${{ env.BUILD_DATE }}
-          name: ImmortalWrt-Rockchip-${{ inputs.image_tag_suffix }}
+          # tag / name 都以构建时间开头：GitHub 的 Release 列表按“标签名字典序”排序，
+          # 旧格式 Autobuild-24.10-<时间> 会让 25.12 永远压过更新的 24.10 构建。
+          tag_name: Autobuild-${{ env.BUILD_DATE }}-${{ inputs.image_tag_suffix }}
+          name: Autobuild ${{ env.BUILD_DATE }} (${{ inputs.image_tag_suffix }})
           body_path: ${{ github.workspace }}/router-info.md
           files: |
             ${{ github.workspace }}/bin/targets/rockchip/armv8/*.img.gz

@@ -6,6 +6,11 @@
 
 ### Changed
 
+- **Release 命名改为时间在前**：`tag_name` 从 `Autobuild-<系列>-<时间>` 改为
+  `Autobuild-<时间>-<系列>`（name 同步为 `Autobuild <时间> (<系列>)`）。
+  原因：GitHub 的 Release 列表按标签名字典序排序，旧格式下 `25.12` 永远排在更新的
+  `24.10` 之前；时间前缀可让字典序与构建时序一致。
+
 - **IPv6 默认关闭**：`99-custom.sh` 新增独立段落，`network.wan.ipv6='0'`、删除静态 `wan6`，
   并停用 `dhcp.lan` 的 `ra` / `dhcpv6` / `ndp`。原先把 `wan6.proto` 设 `none` 的做法对
   PPPoE 动态创建的 `wan_6` 无效（真机实测：仍拿到全球地址与 /60 PD，且 `wan_6` 反复 up/down）。

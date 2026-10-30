@@ -13,6 +13,22 @@
 # ============================================================================
 
 LOGFILE="/etc/config/openbox-install.log"
+LOCK="/var/lock/openbox-install.lock"
+
+# ---------- 0) 单实例锁 ----------
+# 首启的 uci-defaults 补装与 init 服务可能同时启动，两者共用
+# /tmp/open-box-install.sh 会互相截断，且 install.sh 会被并发执行。
+if [ -d "$LOCK" ]; then
+    # 进程被 SIGKILL 时 trap 不会执行，会留下死锁；超过 30 分钟视为过期并清理
+    [ -n "$(find "$LOCK" -maxdepth 0 -mmin +30 2>/dev/null)" ] && rmdir "$LOCK" 2>/dev/null
+fi
+if ! mkdir "$LOCK" 2>/dev/null; then
+    echo "Open-Box: 已有安装实例在运行，本次跳过" >> "$LOGFILE"
+    exit 0
+fi
+trap 'rmdir "$LOCK" 2>/dev/null' 0
+trap 'rmdir "$LOCK" 2>/dev/null; exit 130' INT TERM
+
 echo "=== Open-Box install start $(date) ===" >> "$LOGFILE"
 
 # ---------- 1) 读取构建时生成的开关配置（sed 提取，不 source，防特殊字符注入） ----------
@@ -52,7 +68,7 @@ i=0
 net_ok="no"
 while [ $i -lt 20 ]; do
     if ping -c1 -W2 223.5.5.5 >/dev/null 2>&1 || \
-       curl -fsSL --connect-timeout 3 -o /dev/null https://www.baidu.com 2>/dev/null; then
+       curl -fsSL --connect-timeout 3 --max-time 8 -o /dev/null https://www.baidu.com 2>/dev/null; then
         net_ok="yes"
         echo "Open-Box: 公网可达" >> "$LOGFILE"
         break
@@ -147,4 +163,6 @@ if [ "$ok" -eq 0 ]; then
 fi
 
 echo "=== Open-Box install end $(date) ===" >> "$LOGFILE"
-exit 0
+# 返回真实结果：全部镜像都失败时返回 1（便于后续接入重试/告警；锁由 trap 释放）
+[ "$ok" -eq 1 ] && exit 0
+exit 1

@@ -140,12 +140,17 @@ elif [ "$count" -gt 1 ]; then
     # 从 WAN(eth0, 板载 GMAC 稳定 MAC) 派生一个 LAN MAC：
     #   置本地管理位(0x02) + 末字节+1，永久固定且不与本机其他口冲突。
     # 仅当 LAN 口当前 MAC 命中"随机生成"特征（本地管理位被置位）时才执行。
+    # 不同 busybox 版本对 printf '%d' 的 0x 前缀支持不一致；若不支持，
+    # 六个字节会全部解析成 0，所有设备都会写成 02:00:00:00:00:01（多台同网段会冲突）。
+    # 这里先做能力探测，不支持就跳过 MAC 钉死（保持内核随机 MAC，至少不会撞车）。
+    mac_hex_ok="no"
+    if [ "$(printf '%d' 0x0a 2>/dev/null)" = "10" ]; then mac_hex_ok="yes"; fi
     lan_phy=""
     for _i in $lan_ifnames; do
         lan_phy="$_i"
         break
     done
-    if [ -n "$lan_phy" ]; then
+    if [ -n "$lan_phy" ] && [ "$mac_hex_ok" = "yes" ]; then
         wan_mac=$(cat "/sys/class/net/$wan_ifname/address" 2>/dev/null)
         lan_mac=$(cat "/sys/class/net/$lan_phy/address" 2>/dev/null)
         lan_b1=$(printf '%d' "0x${lan_mac%%:*}" 2>/dev/null)

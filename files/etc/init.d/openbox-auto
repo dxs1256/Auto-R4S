@@ -2,8 +2,13 @@
 # Open-Box 自动补装服务
 # 每次开机（网络就绪后，START=90）自动执行 /etc/openbox-install.sh；
 # 已安装（/opt/open-box/.installed 存在）则秒退。由 99-custom.sh 首启时 enable。
+#
+# 注意：这是传统（legacy）init 脚本，必须【不设置】USE_PROCD。
+# rc.common 的判定是 [ -n "$USE_PROCD" ]（非空即为真），写成 0 同样会走
+# procd 分支，从而用 rc_procd start_service 覆盖掉本文件下面的 start()，
+# 服务就变成空壳、永远不会执行安装脚本。
 START=90
-USE_PROCD=0
+STOP=01
 
 start() {
     [ -x /etc/openbox-install.sh ] || return 0

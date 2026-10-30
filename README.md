@@ -53,7 +53,9 @@
 - **root**：**默认无密码**，首次登录请立即设置
 - **DNS**：`time.android.com` 固定解析到 `203.107.6.88`（兼容安卓 TV）
 - **Docker**：检测到引擎时追加 `docker` zone（`172.16.0.0/12`）与三条转发规则；首启自动为
-  dockerd 配置 `https://docker.m.daocloud.io` 镜像加速（国内直连 Docker Hub 会超时）。
+  dockerd 预置镜像加速列表（`docker.1ms.run` / `docker.sparkcr.cn` / `docker-registry.nmqu.com` /
+  `docker.m.daocloud.io` / `hub.rat.dev` / `docker.hlmirror.com`，按此顺序尝试），因为国内直连
+  Docker Hub 会超时。这些都是第三方代理，会看到镜像名，敏感镜像建议自建 registry。
   注意：F2FS 上 overlay2 挂载会失败，dockerd 自动回落到 **vfs** 驱动（可用，但每层全量复制）。
 - **MAC**：LAN 口若为内核随机生成（本地管理位被置位），从 WAN 口 MAC 派生一个稳定地址
 - **Open-Box**：每次开机在网络就绪后后台尝试安装，成功后写 `/opt/open-box/.installed`，失败下次开机继续；日志 `/etc/config/openbox-install.log`

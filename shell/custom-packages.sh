@@ -48,8 +48,13 @@ CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-app-partexp luci-i18n-partexp-zh-cn"
 #CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-app-advancedplus luci-i18n-advancedplus-zh-cn -luci-app-argon-config -luci-i18n-argon-config-zh-cn"
 # MosDNS
 #CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-app-mosdns luci-i18n-mosdns-zh-cn"
-# Turbo ACC 网络加速
-CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-app-turboacc"
+# Turbo ACC 网络加速 —— 已移除
+# 原因：它开启的流量卸载（flow offload / SFE / fullcone）会让首包之后的流量绕过 netfilter，
+# 与 Open-Box 的 TUN 代理是已知的冲突组合（表现为部分站点偶发卡死）。R4S 作为软路由，
+# 卸载带来的收益也不明显，故不再集成。BBR 单独保留（见下面一行与 files/etc/sysctl.d/99-bbr.conf）。
+#CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-app-turboacc"
+# 仅保留 BBR 拥塞控制（turboacc 移除后仍需要它）
+CUSTOM_PACKAGES="$CUSTOM_PACKAGES kmod-tcp-bbr"
 # 应用过滤 openappfilter.com
 #CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-app-appfilter luci-i18n-appfilter-zh-cn"
 # Lucky大吉 

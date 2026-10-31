@@ -2,6 +2,19 @@
 
 本项目自 2026-10-30 起独立维护（脱离 fork 关系）。更早的历史见 git 记录。
 
+## 2026-10-31
+
+### Removed
+
+- **移除 TurboACC**（`luci-app-turboacc`）：它开启的流量卸载（`sw_flow`/`hw_flow`/`sfe_flow`、
+  `firewall.flow_offloading`、`fullcone_nat`）会让首包之后的流量绕过 netfilter，与 Open-Box
+  的 TUN 代理是已知冲突组合，表现为部分站点偶发卡死。真机验证：关闭后 `nft` 的 `flowtable`
+  消失，DNS 解析、代理与外网访问均正常。
+  - BBR 单独保留：`custom-packages.sh` 改为只装 `kmod-tcp-bbr`（turboacc 是原先唯一设置
+    BBR 的组件），并新增 `files/etc/sysctl.d/99-bbr.conf` 持久化 `tcp_congestion_control=bbr`。
+  - 注意：卸载 turboacc 时会触发其 `DNSMASQ revert`，实测未影响 Open-Box 写入的
+    `dhcp.@dnsmasq[0].server=127.0.0.1#7853`，但升级后仍应确认该上游未被改动。
+
 ## 2026-10-30
 
 ### Fixed

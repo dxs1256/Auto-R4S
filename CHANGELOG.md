@@ -2,6 +2,19 @@
 
 本项目自 2026-10-30 起独立维护（脱离 fork 关系）。更早的历史见 git 记录。
 
+## 2026-11-18
+
+### Changed
+
+- **默认管理地址改为 `192.168.100.1`**：`custom_router_ip` 的默认值在原 `192.168.1.1` 基础上
+  改为 `192.168.100.1`，避免与常见光猫/上级路由网段冲突。改动覆盖三级链路：三个构建 workflow
+  的 `workflow_dispatch` 默认值、`files/etc/uci-defaults/99-custom.sh` 中 `custom_router_ip.txt`
+  缺失时的兜底值，以及 `README.md` / `info.md` 文档。
+  - **failsafe 救援 IP 保持不变**：`imm.config` / `imm25.config` 的 `CONFIG_TARGET_PREINIT_IP`
+    仍为 `192.168.1.1`（救援模式专用，与正常管理 IP 是两套机制）。这样即使管理网段改为
+    `.100.x`，救援时仍可用惯用的 `192.168.1.1` 接入。
+  - 仅影响此后新构建的固件；已在运行的设备需重新刷机或手动 `uci set network.lan.ipaddr` 才会变更。
+
 ## 2026-10-31
 
 ### Removed

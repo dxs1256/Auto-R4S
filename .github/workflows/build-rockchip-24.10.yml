@@ -29,7 +29,7 @@ on:
       custom_router_ip:
         description: "管理地址（仅对多网口有效）格式:192.168.x.1 或 10.x.x.1"
         required: true
-        default: "192.168.100.1"
+        default: "192.168.1.1"
       rootfs_partsize:
         description: "软件包空间大小"
         required: true

@@ -22,7 +22,7 @@
 3. 点 **Run workflow**，按需填写参数（不填即用默认值）；
 4. 等待约 6 分钟，到 **Releases** 下载 `*.img.gz`。
 
-刷写后用网线接 LAN 口访问 `http://192.168.100.1`（默认地址，可在构建时改）。
+刷写后用网线接 LAN 口访问 `http://192.168.1.1`（默认地址，可在构建时改）。
 
 ## ⚙️ 构建参数
 
@@ -30,7 +30,7 @@
 |---|---|---|---|
 | `luci_version` | 24.10.0–24.10.6 / 25.12.0–25.12.2 | 24.10.6 / 25.12.1 | 对应 ImageBuilder 镜像 tag |
 | `profile` | `friendlyarm_nanopi-r4s` | 同左 | 当前仅支持该机型 |
-| `custom_router_ip` | 如 `192.168.100.1` | `192.168.100.1` | 仅对**多网口**生效；单网口走 DHCP |
+| `custom_router_ip` | 如 `192.168.1.1` | `192.168.1.1` | 仅对**多网口**生效；单网口走 DHCP |
 | `rootfs_partsize` | `1G` / `2G` / `3G` / `4G` | `3G` | 根分区大小（MiB） |
 | `include_docker` | `yes` / `no` | `yes` | 含 `docker` + `dockerd` + Dockerman 界面 |
 | `enable_pppoe` | `yes` / `no` | `yes` | 开启后账号密码**明文写入固件** |
